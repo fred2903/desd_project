@@ -11,7 +11,7 @@ This repository is organized to facilitate the collaborative development and tes
     *   *Note: Do not upload full Vivado project folders.*
 *   **`modules_template/`**: Contains baseline VHDL templates (from Piazza).
     *   Use these as your starting point to ensure consistent entity ports and naming.
-*   **`solution_encrypted.xpr.zip`**: The official encrypted project solution.
+*   **`solution_encrypted.xpr.zip`**: The official encrypted project solution (from Piazza).
     *   Available for testing realized components by substituting them into this project to verify if their behavior is correct.
 
 ---
