@@ -13,5 +13,7 @@ This repository is organized to facilitate the collaborative development and tes
     *   Use these as your starting point to ensure consistent entity ports and naming.
 *   **`solution_encrypted.xpr.zip`**: The official encrypted project solution (from Piazza).
     *   Available for testing realized components by substituting them into this project to verify if their behavior is correct.
+*   **`record.py`**: Python script to test the acquisition of audio signal following the joystick and board commands.
+    *   **Usage**: `./record.py -t <acquisition_duration_in_seconds>`
 
 ---
