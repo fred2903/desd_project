@@ -46,7 +46,20 @@ architecture Behavioral of volume_controller is
 	signal reg_volume : std_logic_vector(VOLUME_WIDTH-1 downto 0);
 	signal state : state_type;
     signal processed_data : std_logic_vector(TDATA_WIDTH-1 downto 0);
-	------------------------------
+	-----------------------------
+
+	---------- FUNCTIONS ----------
+    function clip_data(input_val : signed) return std_logic_vector is
+    begin
+        if input_val > to_signed(HIGHER_BOUND, input_val'length) then
+            return std_logic_vector(to_signed(HIGHER_BOUND, TDATA_WIDTH));
+        elsif input_val < to_signed(LOWER_BOUND, input_val'length) then
+            return std_logic_vector(to_signed(LOWER_BOUND, TDATA_WIDTH));
+        else
+            return std_logic_vector(resize(input_val, TDATA_WIDTH));
+        end if;
+    end function;
+    -------------------------------
 
 begin
 	
@@ -82,7 +95,7 @@ begin
             else
                 case state is
 
-                    -- Wait for upstream TVALID, then capture input data and move to COMPUTE state 
+                    -- Wait for upstream TVALID, then capture input data and move to COMPUTE state
                     when WAIT_DATA =>
                         if s_axis_tvalid = '1' then
                             reg_data <= signed(s_axis_tdata);
@@ -106,13 +119,7 @@ begin
                         end if;
 
                         -- Clipping (output saturation)
-                        if shifted_data > to_signed(HIGHER_BOUND, shifted_data'length) then
-                            processed_data <= std_logic_vector(to_signed(HIGHER_BOUND, TDATA_WIDTH));
-                        elsif shifted_data < to_signed(LOWER_BOUND, shifted_data'length) then
-                            processed_data <= std_logic_vector(to_signed(LOWER_BOUND, TDATA_WIDTH));
-                        else
-                            processed_data <= std_logic_vector(resize(shifted_data, TDATA_WIDTH));
-                        end if;
+                        processed_data <= clip_data(shifted_data);
 
                         state <= SEND_DATA;
 
