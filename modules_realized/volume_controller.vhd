@@ -44,7 +44,7 @@ architecture Behavioral of volume_controller is
     signal reg_data : signed(TDATA_WIDTH-1 downto 0);
     signal reg_last : std_logic;
 	signal reg_volume : std_logic_vector(VOLUME_WIDTH-1 downto 0);
-	signal state : state_type;
+	signal state : state_type := WAIT_DATA;
     signal processed_data : std_logic_vector(TDATA_WIDTH-1 downto 0);
 	-----------------------------
 
@@ -90,12 +90,10 @@ begin
         if rising_edge(aclk) then
             if aresetn = '0' then
                 state <= WAIT_DATA;
-                reg_data <= (others => '0');
-                reg_last <= '0';
             else
                 case state is
 
-                    -- Wait for upstream TVALID, then capture input data and move to COMPUTE state
+                    -- Wait for upstream tvalid high, then capture input data and move to COMPUTE state
                     when WAIT_DATA =>
                         if s_axis_tvalid = '1' then
                             reg_data <= signed(s_axis_tdata);
@@ -120,10 +118,10 @@ begin
 
                         -- Clipping (output saturation)
                         processed_data <= clip_data(shifted_data);
-
+						
                         state <= SEND_DATA;
 
-                    -- Wait for downstream TREADY, then move back to WAIT_DATA state to process the next sample
+                    -- Wait for downstream tready high, then move back to WAIT_DATA state to process the next sample
                     when SEND_DATA =>
                         if m_axis_tready = '1' then
                             state <= WAIT_DATA;

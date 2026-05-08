@@ -35,32 +35,32 @@ architecture Behavioral of balance_controller is
 	---------- TYPES ----------
 	type state_type is (WAIT_DATA, COMPUTE, SEND_DATA);
 	---------------------------
-
+	
 	---------- SIGNALS ----------
     signal reg_data : signed(TDATA_WIDTH-1 downto 0);
     signal reg_last : std_logic;
 	signal reg_balance : std_logic_vector(BALANCE_WIDTH-1 downto 0);
-	signal state : state_type;
+	signal state : state_type := WAIT_DATA;
     signal processed_data : std_logic_vector(TDATA_WIDTH-1 downto 0);
-	------------------------------
+	-----------------------------
 
 begin
 
 	---------- AXI4-STREAM OUTPUT FSM ----------
-    with state select s_axis_tready <= 
+    with state select s_axis_tready <=
         '1' when WAIT_DATA, 
         '0' when others;
 
-    with state select m_axis_tvalid <= 
+    with state select m_axis_tvalid <=
         '1' when SEND_DATA, 
         '0' when others;
 
-    with state select m_axis_tdata <= 
-        processed_data when SEND_DATA, 
+    with state select m_axis_tdata <=
+        processed_data when SEND_DATA,
         (others => '-') when others;
 
-    with state select m_axis_tlast <= 
-        reg_last when SEND_DATA, 
+    with state select m_axis_tlast <=
+        reg_last when SEND_DATA,
         '0' when others;
     --------------------------------------------
 
@@ -73,12 +73,10 @@ begin
         if rising_edge(aclk) then
             if aresetn = '0' then
                 state <= WAIT_DATA;
-                reg_data <= (others => '0');
-                reg_last <= '0';
             else
                 case state is
 
-                    -- Wait for upstream TVALID, then capture input data and move to COMPUTE state
+                    -- Wait for upstream tvalid high, then capture input data and move to COMPUTE state
                     when WAIT_DATA =>
                         if s_axis_tvalid = '1' then
                             reg_data <= signed(s_axis_tdata);
@@ -105,9 +103,10 @@ begin
 
 						-- Clipping isn't required since shifting right will not cause overflow, in the worst case the channel volume will be completely attenuated to 0
                         processed_data <= std_logic_vector(shifted_data);
+
                         state <= SEND_DATA;
 
-                    -- Wait for downstream TREADY, then move back to WAIT_DATA state to process the next sample
+                    -- Wait for downstream tready high, then move back to WAIT_DATA state to process the next sample
                     when SEND_DATA =>
                         if m_axis_tready = '1' then
                             state <= WAIT_DATA;
