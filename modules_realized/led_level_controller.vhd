@@ -59,187 +59,132 @@ end led_level_controller;
 
 architecture Behavioral of led_level_controller is
 
-    -- refresh counter max value
-    constant REFRESH_COUNT_MAX : integer :=
-        (refresh_time_ms * 1_000_000) / clock_period_ns;
+    constant REFRESH_CYCLES : positive :=
+        (refresh_time_ms * 1000000) / clock_period_ns;
 
-    -- FSM states
-    type state_t is (
-        IDLE,
-        WAIT_REFRESH,
-        UPDATE_LED
-    );
+    signal refresh_counter : natural range 0 to REFRESH_CYCLES := 0;
 
-    signal state : state_t;
+    signal left_abs        : unsigned(CHANNEL_LENGHT-1 downto 0) := (others => '0');
+    signal avg_level       : unsigned(CHANNEL_LENGHT-1 downto 0) := (others => '0');
 
-    -- absolute value of left/right channels
-    signal left_abs  : unsigned(CHANNEL_LENGHT-1 downto 0);
-    signal right_abs : unsigned(CHANNEL_LENGHT-1 downto 0);
+    signal led_reg         : std_logic_vector(NUM_LEDS-1 downto 0) := (others => '0');
 
-    -- peak detector
-    signal peak_level : unsigned(CHANNEL_LENGHT-1 downto 0);
+    ----------------FUNCTIONS----------------
 
-    -- number of active LEDs
-    signal led_level : integer range 0 to NUM_LEDS;
+    --Funtion1:Absolute value of a signed sample
 
-    -- refresh counter
-    signal refresh_counter :
-        integer range 0 to REFRESH_COUNT_MAX;
-
-begin
-
-    -- AXIS always ready
-    s_axis_tready <= '1';
-
-    process(aclk)
-
-        -- signed audio sample
-        variable sample_signed :
-            signed(CHANNEL_LENGHT-1 downto 0);
-
-        -- absolute value of sample
-        variable sample_abs :
-            unsigned(CHANNEL_LENGHT-1 downto 0);
-
-        -- average audio level
-        variable avg_tmp :
-            unsigned(CHANNEL_LENGHT-1 downto 0);
-
-        -- mapped LED level
-        variable new_level :
-            integer range 0 to NUM_LEDS;
+    function abs_sample(
+        sample : std_logic_vector(CHANNEL_LENGHT-1 downto 0)
+    ) return unsigned is
+        variable mag : unsigned(CHANNEL_LENGHT-1 downto 0);
 
     begin
+        if sample(CHANNEL_LENGHT-1) = '1' then
+            mag := unsigned(not sample) + 1;
+        else
+            mag := unsigned(sample);
+        end if;
 
+        return mag;
+    end function;
+
+
+    -- Function2: Exponential mapping of level to LED count
+   
+     function level_to_leds(
+        level : unsigned(CHANNEL_LENGHT-1 downto 0)
+    ) return std_logic_vector is
+
+        variable result    : std_logic_vector(NUM_LEDS-1 downto 0);
+        variable msb_index : integer := -1;
+        variable led_count : integer := 0;
+
+    begin
+        result := (others => '0');
+
+        -- Find the highest '1' bit
+        for i in CHANNEL_LENGHT-1 downto 0 loop
+            if level(i) = '1' then
+                msb_index := i;
+                exit;
+            end if;
+        end loop;
+
+        -- Below 2^8: no LED
+        if msb_index < 8 then
+            led_count := 0;
+        else
+            led_count := msb_index - 7;
+        end if;
+
+        -- Limit led_count to NUM_LEDS
+        if led_count > NUM_LEDS then
+            led_count := NUM_LEDS;
+        end if;
+
+        -- Generate LED bar
+        for i in 0 to NUM_LEDS-1 loop
+            if i < led_count then
+                result(i) := '1';
+            end if;
+        end loop;
+
+        return result;
+    end function;
+
+
+
+
+---------------------PROCESS------------------------
+begin
+
+    s_axis_tready <= '1';
+    led <= led_reg;
+
+    process(aclk)
+        variable current_abs : unsigned(CHANNEL_LENGHT-1 downto 0);
+        variable sum_level   : unsigned(CHANNEL_LENGHT downto 0);
+    begin
         if rising_edge(aclk) then
 
             if aresetn = '0' then
-
-                -- reset FSM
-                state <= IDLE;
-
-                -- clear audio registers
-                left_abs <= (others => '0');
-                right_abs <= (others => '0');
-
-                -- clear peak detector
-                peak_level <= (others => '0');
-
-                -- clear LED level
-                led_level <= 0;
-
-                -- clear counter
                 refresh_counter <= 0;
+                left_abs        <= (others => '0');
+                avg_level       <= (others => '0');
+                led_reg         <= (others => '0');
 
             else
 
-                -- receive audio sample
+                -- AXI Stream sample accepted
                 if s_axis_tvalid = '1' then
 
-                    -- convert input sample to signed
-                    sample_signed := signed(s_axis_tdata);
+                    current_abs := abs_sample(s_axis_tdata);
 
-                    -- absolute value
-                    if sample_signed < 0 then
-                        sample_abs := unsigned(-sample_signed);
-                    else
-                        sample_abs := unsigned(sample_signed);
-                    end if;
-
-                    -- stereo extraction
-                    -- tlast = 0 -> left
-                    -- tlast = 1 -> right
                     if s_axis_tlast = '0' then
-                        left_abs <= sample_abs;
+            
+                        left_abs <= current_abs;
+
                     else
-                        right_abs <= sample_abs;
-                    end if;
+                        sum_level := resize(left_abs, CHANNEL_LENGHT+1) +
+                                     resize(current_abs, CHANNEL_LENGHT+1);
 
-                    -- average left/right level
-                    avg_tmp := (left_abs + right_abs) srl 1;
+                        avg_level <= sum_level(CHANNEL_LENGHT downto 1);-- Average abs(left) and abs(right)
 
-                    -- peak detector
-                    if avg_tmp > peak_level then
-                        peak_level <= avg_tmp;
                     end if;
 
                 end if;
 
-                case state is
+                -- Refresh LED output every refresh_time_ms
 
-                    when IDLE =>
-
-                        refresh_counter <= 0;
-
-                        state <= WAIT_REFRESH;
-
-                    when WAIT_REFRESH =>
-
-                        -- wait refresh period
-                        if refresh_counter =
-                            REFRESH_COUNT_MAX-1 then
-
-                            refresh_counter <= 0;
-
-                            state <= UPDATE_LED;
-
-                        else
-
-                            refresh_counter <=
-                                refresh_counter + 1;
-
-                        end if;
-
-                    when UPDATE_LED =>
-
-                        -- map audio amplitude to LEDs
-                        new_level :=
-                            to_integer(
-                                peak_level(
-                                    CHANNEL_LENGHT-1 downto
-                                    CHANNEL_LENGHT-4
-                                )
-                            );
-
-                        -- VU meter effect:fast attack, slow decay
-                      
-                        if new_level > led_level then
-
-                            led_level <= new_level;
-
-                        elsif led_level > 0 then
-
-                            led_level <= led_level - 1;
-
-                        end if;
-
-                        -- clear peak detector
-                        peak_level <= (others => '0');
-
-                        state <= WAIT_REFRESH;
-
-                end case;
+                if refresh_counter = REFRESH_CYCLES-1 then
+                    refresh_counter <= 0;
+                    led_reg <= level_to_leds(avg_level);
+                else
+                    refresh_counter <= refresh_counter + 1;
+                end if;
 
             end if;
-
         end if;
-
-    end process;
-
-    -- LED bar generation
-    process(all)
-    begin
-
-        led <= (others => '0');
-
-        for i in 0 to NUM_LEDS-1 loop
-
-            if i < led_level then
-                led(i) <= '1';
-            end if;
-
-        end loop;
-
     end process;
 
 end Behavioral;
