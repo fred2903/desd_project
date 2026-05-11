@@ -31,6 +31,11 @@ end digilent_jstk2;
 
 architecture Behavioral of digilent_jstk2 is
 
+	constant CMDSETLEDRGB		: std_logic_vector(7 downto 0) := x"84";
+
+	-- Inter-packet delay plus the time needed to transfer 1 byte (for the CS de-assertion)
+	constant DELAY_CYCLES		: integer := DELAY_US * (CLKFREQ / 1_000_000) + CLKFREQ / SPI_SCLKFREQ;
+
 begin
 
 end Behavioral;
