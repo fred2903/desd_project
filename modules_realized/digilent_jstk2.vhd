@@ -121,7 +121,9 @@ begin
                         
                         -- Process the 4-byte packet sequentially, waiting for tvalid high before processing each byte
                         when GET_HEADER =>
-                            rx_state <= GET_X;
+                            if s_axis_tdata = x"C0" then
+                                rx_state <= GET_X;
+                            end if;
 
                         when GET_X =>
                             jstk_x <= s_axis_tdata&"00";
