@@ -3,10 +3,10 @@ use IEEE.STD_LOGIC_1164.ALL;
 use ieee.numeric_std.all;
 
 entity balance_controller is
-	generic (
-		TDATA_WIDTH		: positive := 24; -- Audio, 3 bytes
-		BALANCE_WIDTH	: positive := 10;
-		BALANCE_STEP_2	: positive := 6 -- i.e., balance_values_per_step = 2**VOLUME_STEP_2
+	Generic (
+		TDATA_WIDTH : positive := 24; -- Audio, 3 bytes
+		BALANCE_WIDTH : positive := 10;
+		BALANCE_STEP_2 : positive := 6 -- i.e., balance_values_per_step = 2**VOLUME_STEP_2
 	);
 	Port (
 		aclk : in std_logic;

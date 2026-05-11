@@ -31,7 +31,7 @@ entity output_sel is
 	);
 end entity output_sel;
 
-architecture rtl of output_sel is
+architecture Behavioral of output_sel is
 
 	---------- TYPES ----------
 	type out_sel_type is (l_r, mute, l_l, r_r, lpr_lpr, lmr_lmr, lpr_lmr, lmr_lpr);
