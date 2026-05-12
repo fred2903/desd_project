@@ -90,7 +90,7 @@ begin
                     when IDLE =>
                         if s_axis_tvalid = '1' then
                             sample_reg <= s_axis_tdata;
-                            tlast_reg <= s_axis_tlast; -- Salviamo il tlast una sola volta
+                            tlast_reg <= s_axis_tlast;
                             state <= SIG;
                         end if;
 
