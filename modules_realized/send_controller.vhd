@@ -30,7 +30,7 @@ architecture rtl of send_controller is
     --REG
     signal data_left, data_right : std_logic_vector(DATA_LENGTH-1 downto 0) := (others => '0');
 begin
-
+--===================================================
     with AXI_STATE select m_axis_tvalid <=
         '1' when SEND_LEFT,
         '1' when SEND_RIGHT,
@@ -45,7 +45,7 @@ begin
         data_left             when SEND_LEFT,
         data_right            when SEND_RIGHT,
         (others => '-')       when others;
-
+--===================================================
     process (aclk)
     begin
         if rising_edge(aclk) then
@@ -70,10 +70,12 @@ begin
 
                     when WAIT_RIGHT =>
                         if s_axis_tvalid = '1' and send_audio = '1' then
+                            -- check that after have receaved the right channel, the next packet is a left channel
                             if  s_axis_tlast = '1' then
                                 data_right  <= s_axis_tdata;
                                 AXI_STATE  <= SEND_LEFT;
                             else
+                            -- otherwise return to the previous state, in order to not stop the axis
                                 AXI_STATE     <= WAIT_LEFT;
                             end if;
                         end if;
@@ -88,6 +90,9 @@ begin
                             AXI_STATE     <= WAIT_LEFT;
                         end if;
 
+                    when others =>
+                        AXI_STATE <= WAIT_LEFT;
+                        
                 end case;
             end if;
         end if;
