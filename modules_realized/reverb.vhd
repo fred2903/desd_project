@@ -8,6 +8,7 @@ entity reverb is
         CHANNEL_LENGHT  : integer := 24;            -- 3 byte for audio
         DELAY_LENGHT    : integer := 10;            -- JSTK axis dimension
         DELAY_INIT      : integer := 882;           -- 20 ms INIT VALUE DO NOT TOUCH
+
         GAIN_LENGHT     : integer := 10;            -- JSTK axis dimension
         GAIN_INIT_FRAC  : integer := 614;           -- 614/(2^10) ~= 0.6 INIT VALUE DO NOT TOUCH
         HIGHER_BOUND    : integer := 2**23-1;       -- Inclusive (max value of TDATA at 24 bit signed)
@@ -174,13 +175,15 @@ begin
                         end if;
 
                     when MULTIPLICATION =>
-                        mul_res       <= signed(delayed_yn) * signed("0" & gain_in);
+                        -- when computing a multiplication is neccesary that they have the same type
+                        mul_res       <= signed(delayed_yn) * signed("0" & gain_in);    -- since gain_in is 10bit unsigned, adding a bit is needed to cast it into a signed correctly
                         mul_res_right <= signed(delayed_yn_right) * signed("0" & gain_in);
                         CURRENT_STATE <= ADD_DIVISION;
 
                     when ADD_DIVISION =>
+                        -- the shift of this variable corresponds to divide by 2^GAIN_LENGHT
                         data_gain_var := mul_res(CHANNEL_LENGHT + GAIN_LENGHT - 1 downto GAIN_LENGHT);
-                        sum_res <= resize(signed(left_channel), CHANNEL_LENGHT + 1) + resize(data_gain_var, CHANNEL_LENGHT + 1);
+                        sum_res <= resize(signed(left_channel), CHANNEL_LENGHT + 1) + resize(data_gain_var, CHANNEL_LENGHT + 1);    -- +1 bit to avoid overflow 
 
                         data_gain_var_right := mul_res_right(CHANNEL_LENGHT + GAIN_LENGHT - 1 downto GAIN_LENGHT);
                         sum_res_right <= resize(signed(right_channel), CHANNEL_LENGHT + 1) + resize(data_gain_var_right, CHANNEL_LENGHT + 1);
@@ -218,6 +221,9 @@ begin
                             CURRENT_STATE     <= WAIT_LEFT;
                             write_delay_valid <= '1';
                         end if;
+
+                    when others =>
+                        CURRENT_STATE <= WAIT_LEFT;
 
                 end case;
             end if;
