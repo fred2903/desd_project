@@ -94,6 +94,10 @@ begin
                             end if;
                             state_uart <= WAIT_HEADER; -- Always return to header
                         end if;
+
+                    when others =>
+                        state_uart <= WAIT_HEADER;
+
                 end case;
             end if;
         end if;
