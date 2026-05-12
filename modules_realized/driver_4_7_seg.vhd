@@ -1,14 +1,6 @@
 library IEEE;
 use IEEE.STD_LOGIC_1164.ALL;
-
--- Uncomment the following library declaration if using
--- arithmetic functions with Signed or Unsigned values
 use IEEE.NUMERIC_STD.ALL;
-
--- Uncomment the following library declaration if instantiating
--- any Xilinx leaf cells in this code.
---library UNISIM;
---use UNISIM.VCNomponents.all;
 
 entity driver_4_7seg is
     Generic(
@@ -56,6 +48,7 @@ begin
                         when D2 => FSM_DISPLAY <= D3;
                         when D3 => FSM_DISPLAY <= D4;
                         when D4 => FSM_DISPLAY <= D1;
+                        when others => FSM_DISPLAY <= D1;
                     end case;
                 else
                     timer_counter <= timer_counter + 1;
@@ -68,37 +61,19 @@ begin
     -- COMBINATIONAL PROCESS: Pure MUX based on current state
     -- =========================================================
 
+    -- update every 1ms the num that is displayed
     with FSM_DISPLAY select num <=
         num1  when D1,
         num2  when D2,
         num3  when D3,
         num4  when D4;
 
+    --when a a bit of an is '0' the led is on
     with FSM_DISPLAY select an <=
         "1110"  when D1,
         "1101"  when D2,
         "1011"  when D3,
         "0111"  when D4;
-
-    --or (more easy to read)
-
-    --process(FSM_DISPLAY, num1, num2, num3, num4)
-    --begin
-    --    case FSM_DISPLAY is
-    --        when D1 =>
-    --            num <= num1;
-    --            an  <= "1110"; -- Turns on the leftmost display
-    --        when D2 =>
-    --            num <= num2;
-    --            an  <= "1101"; -- Turns on the second display from the left
-    --        when D3 =>
-    --            num <= num3;
-    --            an  <= "1011"; -- Turns on the third display
-    --        when D4 =>
-    --            num <= num4;
-    --            an  <= "0111"; -- Turns on the rightmost display
-    --    end case;
-    --end process;
 
     -- ===================================================
     -- 7-SEGMENT DECODER (Combinational)
