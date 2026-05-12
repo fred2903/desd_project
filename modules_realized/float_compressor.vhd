@@ -33,7 +33,7 @@ architecture rtl of float_compressor is
     signal sign_reg           : std_logic;
     signal abs_value_reg      : unsigned(CHANNEL_LENGHT-2 downto 0);
     signal first_one_pos_reg  : integer;
-    signal tlast_reg     : std_logic;
+    signal tlast_reg          : std_logic;
     signal compressed_reg     : std_logic_vector(OUTPUT_LENGHT-1 downto 0);
 
 begin
@@ -44,23 +44,24 @@ begin
     with state select m_axis_tvalid <=
 
         '0' when IDLE,
+        '0' when SIG,
+        '0' when LOD,
         '0' when COMPRESS,
         '1' when SEND;
 
-    with state select m_axis_tdata <=
+  with state select m_axis_tvalid <=
+        '1' when SEND,
+        '0' when others;
 
-        (others => '-') when IDLE,
-        (others => '-') when COMPRESS,
-        compressed_reg when SEND;
+    with state select m_axis_tdata <=
+        compressed_reg when SEND,
+        (others => '-') when others;
 
     with state select s_axis_tready <=
-        
         '1' when IDLE,
-        '0' when COMPRESS,
-        '0' when SEND;
+        '0' when others;
 
     with state select m_axis_tlast <=
-
         tlast_reg when SEND,
         '0' when others;
 
