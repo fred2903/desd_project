@@ -23,7 +23,7 @@ architecture rtl of binary_to_decimal is
     type state_type is (IDLE, SHIFT, CHECK, DONE);
     signal state : state_type;
     --reg
-    signal hundred_digit   :   std_logic_vector(3 downto 0);    -- just is case since binary_num is 7 bit
+    signal hundred_digit   :   std_logic_vector(3 downto 0);    -- just in case since binary_num is 7 bit
     signal counter : integer range 0 to binary_num'high;      --the algorith is over when (binary_num'lenght) shift has occured
     -- shift_reg contain (hundred_digit,decade_digit,unit_digit,binary_num) to perform the shifts in a easy way
     signal shift_reg   :   unsigned(binary_num'length + hundred_digit'length + decade_digit'length + unit_digit'length -1 downto 0);
@@ -31,12 +31,14 @@ architecture rtl of binary_to_decimal is
 begin
     
 process(clk)
+-- we need this variable to update the value immeaditly during computation in the process
 variable shift_var :   unsigned(binary_num'length + hundred_digit'length + decade_digit'length + unit_digit'length -1 downto 0);
     begin
         if rising_edge(clk) then
             case( state ) is
             
                 when IDLE =>
+                    -- build of the vector used to be shifted
                     shift_reg <= to_unsigned(0, shift_reg'length - binary_num'length) & unsigned(binary_num);
                     counter <= 0;
                     
@@ -54,6 +56,7 @@ variable shift_var :   unsigned(binary_num'length + hundred_digit'length + decad
 
                 when SHIFT =>
                     shift_reg <= shift_reg(shift_reg'high - 1 downto 0) & '0';
+                    --the algorith is over when (binary_num'lenght) shift has occured
                     if counter = binary_num'high then
                         state <= DONE;
                     else
@@ -62,6 +65,7 @@ variable shift_var :   unsigned(binary_num'length + hundred_digit'length + decad
                     end if ;
 
                 when DONE =>
+                    -- assign the output pins
                     unit_digit <= std_logic_vector(shift_reg(binary_num'length +3 downto binary_num'length));
                     decade_digit <= std_logic_vector(shift_reg(binary_num'length +3 + 4 downto binary_num'length + 4));
                     hundred_digit <= std_logic_vector(shift_reg(binary_num'length +3 + 8 downto binary_num'length + 8));
