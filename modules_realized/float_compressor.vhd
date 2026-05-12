@@ -41,14 +41,6 @@ begin
     -------------------------------------------------------------------------
     -- OUTPUT ASSIGNMENTS (AXIS HANDSHAKE)
     -------------------------------------------------------------------------
-    with state select m_axis_tvalid <=
-
-        '0' when IDLE,
-        '0' when SIG,
-        '0' when LOD,
-        '0' when COMPRESS,
-        '1' when SEND;
-
   with state select m_axis_tvalid <=
         '1' when SEND,
         '0' when others;
