@@ -1,5 +1,5 @@
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
+library ieee;
+use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity balance_controller is
@@ -66,7 +66,7 @@ begin
 
 	---------- PROCESSES ----------
 	process (aclk)
-        variable delta_balance : signed(BALANCE_WIDTH downto 0);
+        variable delta_balance : signed(BALANCE_WIDTH downto 0); -- BALANCE_WIDTH instead of BALANCE_WIDTH-1 bits to safely perform subtraction without overflow risk
         variable exponent : integer;
         variable shifted_data : signed(TDATA_WIDTH-1 downto 0);
     begin
