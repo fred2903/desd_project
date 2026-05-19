@@ -1,80 +1,45 @@
---binary to decimal without division, algorithm <<shift and add 3>>
---https://www.youtube.com/watch?v=IBgiB7KXfEY
-
 library ieee;
 use ieee.std_logic_1164.all;
 use ieee.numeric_std.all;
 
 entity binary_to_decimal is
-    port (
-        clk   : in std_logic;
+    Port (
+        clk : in std_logic;
 
         binary_num : in std_logic_vector(6 downto 0);
 
         decade_digit : out std_logic_vector(3 downto 0);
-        unit_digit : out std_logic_vector(3 downto 0)
-        
+        unit_digit : out std_logic_vector(3 downto 0)  
     );
 end entity binary_to_decimal;
 
 architecture rtl of binary_to_decimal is
 
-    --FSM
-    type state_type is (IDLE, SHIFT, CHECK, DONE);
-    signal state : state_type;
-    --reg
-    signal hundred_digit   :   std_logic_vector(3 downto 0);    -- just in case since binary_num is 7 bit
-    signal counter : integer range 0 to binary_num'high;      --the algorith is over when (binary_num'lenght) shift has occured
-    -- shift_reg contain (hundred_digit,decade_digit,unit_digit,binary_num) to perform the shifts in a easy way
-    signal shift_reg   :   unsigned(binary_num'length + hundred_digit'length + decade_digit'length + unit_digit'length -1 downto 0);
-    
 begin
-    
-process(clk)
--- we need this variable to update the value immeaditly during computation in the process
-variable shift_var :   unsigned(binary_num'length + hundred_digit'length + decade_digit'length + unit_digit'length -1 downto 0);
+
+    process(clk)
+        variable bin_int : integer range 0 to 127;
+        variable decade : integer range 0 to 9;
+        variable unit : integer range 0 to 9;
     begin
         if rising_edge(clk) then
-            case( state ) is
-            
-                when IDLE =>
-                    -- build of the vector used to be shifted
-                    shift_reg <= to_unsigned(0, shift_reg'length - binary_num'length) & unsigned(binary_num);
-                    counter <= 0;
-                    
-                    state <= CHECK; 
+            -- Convert the 7-bit binary input to an integer for easier manipulation
+            bin_int := to_integer(unsigned(binary_num));
 
-                when CHECK =>
-                    shift_var := shift_reg;
-                    for i in 0 to 2 loop
-                        if shift_var(shift_var'high - i*4 downto shift_var'high - 3 -i*4) > 4 then
-                            shift_var(shift_var'high - i*4 downto shift_var'high - 3 -i*4) := shift_var(shift_var'high - i*4 downto shift_var'high - 3 -i*4) + 3;
-                        end if ;
-                    end loop;  
-                    shift_reg <= shift_var;
-                    state <= SHIFT;
+            -- Clamp the input to 99 to fit into two decimal digits
+            if bin_int > 99 then
+                decade := 9;
+                unit := 9;
+            else
+                -- Division and modulo by constants and within small ranges can be automatically synthesized efficiently
+                decade := bin_int / 10;
+                unit := bin_int mod 10;
+            end if;
 
-                when SHIFT =>
-                    shift_reg <= shift_reg(shift_reg'high - 1 downto 0) & '0';
-                    --the algorith is over when (binary_num'lenght) shift has occured
-                    if counter = binary_num'high then
-                        state <= DONE;
-                    else
-                        counter <= counter + 1;
-                        state <= CHECK;
-                    end if ;
-
-                when DONE =>
-                    -- assign the output pins
-                    unit_digit <= std_logic_vector(shift_reg(binary_num'length +3 downto binary_num'length));
-                    decade_digit <= std_logic_vector(shift_reg(binary_num'length +3 + 4 downto binary_num'length + 4));
-                    hundred_digit <= std_logic_vector(shift_reg(binary_num'length +3 + 8 downto binary_num'length + 8));
-                    state <= IDLE;
-
-                when others =>
-                    state <= IDLE;
-
-            end case ;
-        end if ;
+            -- Convert the resulting integer digits back to 4-bit std_logic_vector
+            decade_digit <= std_logic_vector(to_unsigned(decade, 4));
+            unit_digit <= std_logic_vector(to_unsigned(unit, 4));
+        end if;
     end process;
+
 end architecture;
