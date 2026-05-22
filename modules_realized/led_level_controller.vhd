@@ -1,190 +1,125 @@
-----------------------------------------------------------------------------------
--- Company: 
--- Engineer: 
--- 
--- Create Date: 22.05.2021 15:42:35
--- Design Name: 
--- Module Name: led_level_controller - Behavioral
--- Project Name: 
--- Target Devices: 
--- Tool Versions: 
--- Description: 
--- 
--- Dependencies: 
--- 
--- Revision:
--- Revision 0.01 - File Created
--- Additional Comments:
--- 
-----------------------------------------------------------------------------------
-
-
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-
--- Uncomment the following library declaration if using
--- arithmetic functions with Signed or Unsigned values
-use IEEE.NUMERIC_STD.ALL;
-
--- Uncomment the following library declaration if instantiating
--- any Xilinx leaf cells in this code.
---library UNISIM;
---use UNISIM.VComponents.all;
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
 entity led_level_controller is
-
-    generic(
-
+    Generic (
         NUM_LEDS : positive := 16;
-        CHANNEL_LENGHT  : positive := 24;   -- 3 Byte for AXIS audio I2S
-        refresh_time_ms: positive :=1;      -- refresh the LEDS every refresh_time_ms
-        clock_period_ns: positive :=10      -- base time
-
+        CHANNEL_LENGTH : positive := 24; -- 3 Byte for AXIS audio I2S
+        REFRESH_TIME_MS: positive := 1; -- refresh the LEDS every REFRESH_TIME_MS
+        CLOCK_PERIOD_NS: positive := 10 -- base time
     );
     Port (
-        aclk			: in std_logic;
-        aresetn			: in std_logic;
-        
-        led    : out std_logic_vector(NUM_LEDS-1 downto 0);
+        aclk : in std_logic;
+        aresetn : in std_logic;
 
-        s_axis_tvalid	: in std_logic;
-        s_axis_tdata	: in std_logic_vector(CHANNEL_LENGHT-1 downto 0);
-        s_axis_tlast    : in std_logic;
-        s_axis_tready	: out std_logic
+        s_axis_tvalid : in std_logic;
+        s_axis_tdata : in std_logic_vector(CHANNEL_LENGTH-1 downto 0);
+        s_axis_tlast : in std_logic;
+        s_axis_tready : out std_logic;
 
+        led : out std_logic_vector(NUM_LEDS-1 downto 0)
     );
 end led_level_controller;
 
-
-
 architecture Behavioral of led_level_controller is
 
-    constant REFRESH_CYCLES : positive :=
-        (refresh_time_ms * 1000000) / clock_period_ns;
+    ---------- CONSTANTS ----------
+    constant REFRESH_CYCLES : integer := REFRESH_TIME_MS * (1_000_000 / CLOCK_PERIOD_NS);
+    constant LOG_OFFSET : integer := CHANNEL_LENGTH-1 - NUM_LEDS; -- Bit offset for logarithmic scale mapping from last audio L/R average level to led pattern
+    -------------------------------
 
-    signal refresh_counter : natural range 0 to REFRESH_CYCLES := 0;
+    ---------- SIGNALS ----------
+    signal timer_cnt : integer range 0 to REFRESH_CYCLES-1 := 0; -- Timer to achieve the desired refresh rate
+    signal abs_l : unsigned(CHANNEL_LENGTH-1 downto 0) := (others => '0');
+    signal avg_level : unsigned(CHANNEL_LENGTH-2 downto 0) := (others => '0'); -- CHANNEL_LENGTH-2 is sufficient because the average between a left sample and a right sample always fits in CHANNEL_LENGTH-1 bits
+    signal reg_led : std_logic_vector(NUM_LEDS-1 downto 0) := (others => '0');
+    -----------------------------
 
-    signal left_abs        : unsigned(CHANNEL_LENGHT-1 downto 0) := (others => '0');
-    signal avg_level       : unsigned(CHANNEL_LENGHT-1 downto 0) := (others => '0');
-
-    signal led_reg         : std_logic_vector(NUM_LEDS-1 downto 0) := (others => '0');
-
-    ----------------FUNCTIONS----------------
-
-    --Funtion1:Absolute value of a signed sample
-
-    function abs_sample(
-        sample : std_logic_vector(CHANNEL_LENGHT-1 downto 0)
-    ) return unsigned is
-        variable mag : unsigned(CHANNEL_LENGHT-1 downto 0);
-
+    ---------- FUNCTIONS ----------
+    -- Function to calculate the absolute value of a signed std_logic_vector and return it as unsigned
+    function get_absolute_value(data_in : std_logic_vector) return unsigned is
+        variable result : unsigned(data_in'length-1 downto 0);
     begin
-        if sample(CHANNEL_LENGHT-1) = '1' then
-            mag := unsigned(not sample) + 1;
+        if data_in(data_in'high) = '1' then -- If MSB is '1' the number is negative
+            result := unsigned(not data_in) + 1; -- Two's complement inversion
         else
-            mag := unsigned(sample);
+            result := unsigned(data_in);
         end if;
-
-        return mag;
-    end function;
-
-
-    -- Function2: Exponential mapping of level to LED count
-   
-     function level_to_leds(
-        level : unsigned(CHANNEL_LENGHT-1 downto 0)
-    ) return std_logic_vector is
-
-        variable result    : std_logic_vector(NUM_LEDS-1 downto 0);
-        variable msb_index : integer := -1;
-        variable led_count : integer := 0;
-
-    begin
-        result := (others => '0');
-
-        -- Find the highest '1' bit
-        for i in CHANNEL_LENGHT-1 downto 0 loop
-            if level(i) = '1' then
-                msb_index := i;
-                exit;
-            end if;
-        end loop;
-
-        -- Below 2^8: no LED
-        if msb_index < 8 then
-            led_count := 0;
-        else
-            led_count := msb_index - 7;
-        end if;
-
-        -- Limit led_count to NUM_LEDS
-        if led_count > NUM_LEDS then
-            led_count := NUM_LEDS;
-        end if;
-
-        -- Generate LED bar
-        for i in 0 to NUM_LEDS-1 loop
-            if i < led_count then
-                result(i) := '1';
-            end if;
-        end loop;
-
         return result;
     end function;
 
+    -- Function to map the last audio L/R average level to the corresponding led pattern on a logarithmic scale
+    function level_to_leds(level : unsigned) return std_logic_vector is
+        variable next_led : std_logic_vector(NUM_LEDS-1 downto 0) := (others => '0');
+    begin
+        -- Scan from highest bit down to locate the level magnitude
+        for i in NUM_LEDS-1 downto 0 loop
+            if level(i + LOG_OFFSET) = '1' then
+                -- Fill the leds up to the level magnitude + offset (i + LOG_OFFSET) position
+                for j in 0 to i loop
+                    next_led(j) := '1';
+                end loop;
+                exit; -- Exit the loop early once the highest bit is found
+            end if;
+        end loop;
+    
+        return next_led;
+    end function;
+    -------------------------------
 
-
-
----------------------PROCESS------------------------
 begin
+    
+    ---------- DATA FLOW ----------
+    led <= reg_led;
+    -------------------------------
 
-    s_axis_tready <= '1';
-    led <= led_reg;
-
-    process(aclk)
-        variable current_abs : unsigned(CHANNEL_LENGHT-1 downto 0);
-        variable sum_level   : unsigned(CHANNEL_LENGHT downto 0);
+    ---------- PROCESSES ----------
+    process (aclk)
+        variable current_abs : unsigned(CHANNEL_LENGTH-1 downto 0);
+        variable sum_level : unsigned(CHANNEL_LENGTH-1 downto 0); -- CHANNEL_LENGTH-1 is sufficient to safely perform addition without overflow risk since we are summing a left sample and a right sample, where one was negative (worst case -2^(CHANNEL_LENGTH-1)) and the other is positive (worst case 2^(CHANNEL_LENGTH-1)-1) and their absolute values sum always fits in CHANNEL_LENGTH bits (worst case 2^(CHANNEL_LENGTH-1) + 2^(CHANNEL_LENGTH-1)-1 = 2^CHANNEL_LENGTH-1)
     begin
         if rising_edge(aclk) then
-
             if aresetn = '0' then
-                refresh_counter <= 0;
-                left_abs        <= (others => '0');
-                avg_level       <= (others => '0');
-                led_reg         <= (others => '0');
-
+                s_axis_tready <= '0';
+                timer_cnt <= 0;
+                abs_l <= (others => '0');
+                avg_level <= (others => '0');
+                reg_led <= (others => '0');
             else
-
-                -- AXI Stream sample accepted
-                if s_axis_tvalid = '1' then
-
-                    current_abs := abs_sample(s_axis_tdata);
-
-                    if s_axis_tlast = '0' then
-            
-                        left_abs <= current_abs;
-
-                    else
-                        sum_level := resize(left_abs, CHANNEL_LENGHT+1) +
-                                     resize(current_abs, CHANNEL_LENGHT+1);
-
-                        avg_level <= sum_level(CHANNEL_LENGHT downto 1);-- Average abs(left) and abs(right)
-
-                    end if;
-
+                -- Always ready to accept data from the bus (audio monitor is non-blocking), except when reset is active
+                s_axis_tready <= '1';
+                
+                -- Refresh timer and led update logic (runs every REFRESH_CYCLES)
+                if timer_cnt = REFRESH_CYCLES-1 then
+                    -- Update led register and reset the refreshing counter for the next refreshing window
+                    timer_cnt <= 0;
+                    reg_led <= level_to_leds(avg_level);
+                else
+                    timer_cnt <= timer_cnt + 1;
                 end if;
 
-                -- Refresh LED output every refresh_time_ms
+                -- Audio data (L/R channels) capture and average logic
+                if s_axis_tvalid = '1' then
+                    
+                    -- Get absolute value of the signed audio sample
+                    current_abs := get_absolute_value(s_axis_tdata);
 
-                if refresh_counter = REFRESH_CYCLES-1 then
-                    refresh_counter <= 0;
-                    led_reg <= level_to_leds(avg_level);
-                else
-                    refresh_counter <= refresh_counter + 1;
+                    -- Process L/R channels' samples
+                    if s_axis_tlast = '0' then
+                        -- Left channel: store for later
+                        abs_l <= current_abs;
+                    else
+                        -- Right channel: average with left channel
+                        sum_level := abs_l + current_abs;
+                        avg_level := sum_level(CHANNEL_LENGTH-1 downto 1);
+                    end if;
+                    
                 end if;
 
             end if;
         end if;
     end process;
+    -------------------------------
 
 end Behavioral;
