@@ -32,13 +32,16 @@ architecture rtl of float_compressor is
     -------------------------------
 
     ---------- TYPES ----------
-    type state_type is (WAIT_DATA, COMPUTE, SEND_DATA);
+    type state_type is (WAIT_DATA, COMPUTE_1, COMPUTE_2, SEND_DATA);
     ---------------------------
 
     ---------- SIGNALS ----------
     signal reg_data : std_logic_vector(CHANNEL_LENGTH-1 downto 0);
     signal reg_last : std_logic;
     signal state : state_type := WAIT_DATA;
+    signal reg_sign : std_logic;
+    signal reg_magnitude : unsigned(CHANNEL_LENGTH-1 downto 0);
+    signal reg_leading_one_pos : integer range 0 to CHANNEL_LENGTH-1;
     signal compressed_data : std_logic_vector(OUTPUT_LENGTH-1 downto 0);
     -----------------------------
 
@@ -77,16 +80,16 @@ begin
             else
                 case state is
 
-                    -- Wait for upstream tvalid high, then capture input data and move to COMPUTE state
+                    -- Wait for upstream tvalid high, then capture input data and move to COMPUTE_1 state
                     when WAIT_DATA =>
                         if s_axis_tvalid = '1' then
                             reg_data <= s_axis_tdata;
                             reg_last <= s_axis_tlast;
-                            state <= COMPUTE;
+                            state <= COMPUTE_1;
                         end if;
 
-                    -- Perform the compression algorithm to pass from a signed CHANNEL_LENGTH-bit input to a floating-point-like OUTPUT_LENGTH-bit output, then move to SEND_DATA state
-                    when COMPUTE =>
+                    -- Perform the compression algorithm to pass from a signed CHANNEL_LENGTH-bit input to a floating-point-like OUTPUT_LENGTH-bit output in the next two states (COMPUTE_1 and COMPUTE_2)
+                    when COMPUTE_1 =>
                         -- Sign bit and two's complement absolute value extraction
                         sign_bit := reg_data(CHANNEL_LENGTH-1);
                         if sign_bit = '1' then -- Handles -0 non-existence automatically since -0 in two's complement is represented as all bits 0, which will be treated as +0
@@ -103,19 +106,27 @@ begin
                             end if;
                         end loop;
 
+                        -- Save intermediate results into pipeline registers for the next clock cycle processing
+                        reg_sign <= sign_bit;
+                        reg_magnitude <= magnitude;
+                        reg_leading_one_pos <= leading_one_pos;
+
+                        state <= COMPUTE_2;
+
+                    when COMPUTE_2 =>
                         -- Mantissa and exponent calculation via magnitude bounds assessment
-                        if magnitude < THRESHOLD then
+                        if reg_magnitude < THRESHOLD then
                             exp_val := to_unsigned(0, EXPONENT_LENGTH);
-                            mant_val := magnitude(MANTISSA_LENGTH-1 downto 0);
+                            mant_val := reg_magnitude(MANTISSA_LENGTH-1 downto 0);
                         else
-                            exp_val := to_unsigned(leading_one_pos - MANTISSA_LENGTH + 1, EXPONENT_LENGTH);
+                            exp_val := to_unsigned(reg_leading_one_pos - MANTISSA_LENGTH + 1, EXPONENT_LENGTH);
                             -- Right shift to map variable mantissa bits to a static MANTISSA_LENGTH range
-                            shifted_magnitude := shift_right(magnitude, leading_one_pos - MANTISSA_LENGTH);
+                            shifted_magnitude := shift_right(reg_magnitude, reg_leading_one_pos - MANTISSA_LENGTH);
                             mant_val := shifted_magnitude(MANTISSA_LENGTH-1 downto 0);
                         end if;
 
                         -- Compressed data vector packing
-                        compressed_data(OUTPUT_LENGTH-1) <= sign_bit;
+                        compressed_data(OUTPUT_LENGTH-1) <= reg_sign;
                         compressed_data((OUTPUT_LENGTH-2) downto MANTISSA_LENGTH) <= std_logic_vector(exp_val);
                         compressed_data((MANTISSA_LENGTH-1) downto 0) <= std_logic_vector(mant_val);
 
