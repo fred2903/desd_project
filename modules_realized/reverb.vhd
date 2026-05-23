@@ -1,232 +1,220 @@
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
 entity reverb is
-    generic(
-        LOG2_DELAY_INCR : integer :=1;              -- CONSTANT DO NOT TOUCH
-        CHANNEL_LENGHT  : integer := 24;            -- 3 byte for audio
-        DELAY_LENGHT    : integer := 10;            -- JSTK axis dimension
-        DELAY_INIT      : integer := 882;           -- 20 ms INIT VALUE DO NOT TOUCH
-
-        GAIN_LENGHT     : integer := 10;            -- JSTK axis dimension
-        GAIN_INIT_FRAC  : integer := 614;           -- 614/(2^10) ~= 0.6 INIT VALUE DO NOT TOUCH
-        HIGHER_BOUND    : integer := 2**23-1;       -- Inclusive (max value of TDATA at 24 bit signed)
-        LOWER_BOUND     : integer := -2**23         -- Inclusive (min value of TDATA at 24 bit signed)
+    Generic (
+        LOG2_DELAY_INCR : integer := 1; -- CONSTANT DO NOT TOUCH
+        CHANNEL_LENGTH : integer := 24; -- 3 byte for audio
+        DELAY_LENGTH : integer := 10; -- JSTK axis dimension
+        DELAY_INIT : integer := 882; -- 20 ms INIT VALUE DO NOT TOUCH
+        GAIN_LENGTH : integer := 10; -- JSTK axis dimension
+        GAIN_INIT_FRAC : integer := 614; -- 614/(2^10) ~= 0.6 INIT VALUE DO NOT TOUCH
+        HIGHER_BOUND : integer := 2**23-1; -- Inclusive (max value of TDATA at 24 bit signed)
+		LOWER_BOUND : integer := -2**23 -- Inclusive (min value of TDATA at 24 bit signed)
     );
     Port (
-        aclk            : in std_logic;
-        aresetn         : in std_logic;
-        
-        enable_reverb   : in std_logic;
-        delay_in        : in std_logic_vector(DELAY_LENGHT-1 downto 0);
-        gain_in         : in std_logic_vector(GAIN_LENGHT-1 downto 0);
+        aclk : in std_logic;
+        aresetn : in std_logic;
     
-        s_axis_tvalid   : in std_logic;
-        s_axis_tdata    : in std_logic_vector(CHANNEL_LENGHT-1 downto 0);
-        s_axis_tlast    : in std_logic;
-        s_axis_tready   : out std_logic;
+        s_axis_tvalid : in std_logic;
+        s_axis_tdata : in std_logic_vector(CHANNEL_LENGTH-1 downto 0);
+        s_axis_tlast : in std_logic;
+        s_axis_tready : out std_logic;
     
-        m_axis_tvalid   : out std_logic;
-        m_axis_tdata    : out std_logic_vector(CHANNEL_LENGHT-1 downto 0);
-        m_axis_tlast    : out std_logic;
-        m_axis_tready   : in std_logic
+        m_axis_tvalid : out std_logic;
+        m_axis_tdata : out std_logic_vector(CHANNEL_LENGTH-1 downto 0);
+        m_axis_tlast : out std_logic;
+        m_axis_tready : in std_logic;
+
+        enable_reverb : in std_logic;
+        delay_in : in std_logic_vector(DELAY_LENGTH-1 downto 0);
+        gain_in : in std_logic_vector(GAIN_LENGTH-1 downto 0)
     );
 end reverb;
 
 architecture Behavioral of reverb is
 
+    ---------- INTERNAL COMPONENTS ----------
     component delay is
-        generic(
-            CHANNEL_LENGHT  : integer;
-            DELAY_LENGHT    : integer;
-            DELAY_INIT      : integer;
+        Generic (
+            CHANNEL_LENGTH : integer;
+            DELAY_LENGTH : integer;
+            DELAY_INIT : integer;
             LOG2_DELAY_INCR : integer
         );
         Port (
-            aclk            : in std_logic;
-            aresetn         : in std_logic;
-            delay_in        : in std_logic_vector(DELAY_LENGHT-1 downto 0);
-            data_in         : in std_logic_vector(CHANNEL_LENGHT-1 downto 0);
-            data_in_valid   : in std_logic;
-            data_out        : out std_logic_vector(CHANNEL_LENGHT-1 downto 0)
+            aclk : in std_logic;
+            aresetn : in std_logic;
+            
+            delay_in : in std_logic_vector(DELAY_LENGTH-1 downto 0);
+            data_in : in std_logic_vector(CHANNEL_LENGTH-1 downto 0);
+            data_in_valid : in std_logic;
+        
+            data_out : out std_logic_vector(CHANNEL_LENGTH-1 downto 0)
         );
     end component;
-
-    --FSM
-    type CURRENT_STATE_TYPE is (WAIT_LEFT, WAIT_RIGHT, MULTIPLICATION, ADD_DIVISION, SATURATION, SEND_LEFT, SEND_RIGHT);
-    signal CURRENT_STATE    : CURRENT_STATE_TYPE;
-    
-    --
-    signal enable_reverb_left, write_delay_valid : std_logic;
-    
-    --reg
-    signal left_channel, right_channel : std_logic_vector(CHANNEL_LENGHT-1 downto 0);
-    
-    --operation reg
-    signal yn, delayed_yn : std_logic_vector(CHANNEL_LENGHT-1 downto 0);
-    signal mul_res : signed(CHANNEL_LENGHT + GAIN_LENGHT downto 0);
-    signal sum_res : signed(CHANNEL_LENGHT downto 0);
-
-    signal yn_right, delayed_yn_right : std_logic_vector(CHANNEL_LENGHT-1 downto 0);
-    signal mul_res_right : signed(CHANNEL_LENGHT + GAIN_LENGHT downto 0);
-    signal sum_res_right : signed(CHANNEL_LENGHT downto 0);
-
-begin
-
-    with CURRENT_STATE select m_axis_tvalid <=
-        '1' when SEND_LEFT,
-        '1' when SEND_RIGHT,
-        '0' when others;
-
-    with CURRENT_STATE select s_axis_tready <=
-        '1' when WAIT_LEFT,
-        '1' when WAIT_RIGHT,
-        '0' when others;
-
-    with CURRENT_STATE select m_axis_tdata <=
-        yn               when SEND_LEFT,
-        yn_right         when SEND_RIGHT,
-        (others => '-')  when others;
-
-    with CURRENT_STATE select m_axis_tlast <=
-        '0' when SEND_LEFT,
-        '1' when SEND_RIGHT,
-        '0' when others;
-
-    --------------------------------------
-    delay_inst : delay
-    generic map (
-        CHANNEL_LENGHT  => CHANNEL_LENGHT,
-        DELAY_LENGHT    => DELAY_LENGHT,
-        DELAY_INIT      => DELAY_INIT,
-        LOG2_DELAY_INCR => LOG2_DELAY_INCR
-    )
-    port map (
-        aclk            => aclk,
-        aresetn         => aresetn,
-        delay_in        => delay_in,
-        data_in         => yn,
-        data_in_valid   => write_delay_valid,
-        data_out        => delayed_yn
-    );
-
-    delay_inst_right : delay
-    generic map (
-        CHANNEL_LENGHT  => CHANNEL_LENGHT,
-        DELAY_LENGHT    => DELAY_LENGHT,
-        DELAY_INIT      => DELAY_INIT,
-        LOG2_DELAY_INCR => LOG2_DELAY_INCR
-    )
-    port map (
-        aclk            => aclk,
-        aresetn         => aresetn,
-        delay_in        => delay_in,
-        data_in         => yn_right,
-        data_in_valid   => write_delay_valid,
-        data_out        => delayed_yn_right
-    );
     -----------------------------------------
 
+    ---------- TYPES ----------
+    type state_type is (WAIT_DATA, COMPUTE, SEND_DATA);
+    ---------------------------
+
+    ---------- SIGNALS ----------
+    signal x_n : std_logic_vector(CHANNEL_LENGTH-1 downto 0);
+    signal reg_last : std_logic;
+    signal reg_enable_reverb : std_logic;
+    signal reg_delay : std_logic_vector(DELAY_LENGTH-1 downto 0);
+    signal reg_gain : std_logic_vector(GAIN_LENGTH-1 downto 0);
+    signal state : state_type := WAIT_DATA;
+    signal y_n : std_logic_vector(CHANNEL_LENGTH-1 downto 0);
+    signal delay_data_in_valid_l : std_logic;
+    signal delay_data_in_valid_r : std_logic;
+    signal delay_data_out_l : std_logic_vector(CHANNEL_LENGTH-1 downto 0);
+    signal delay_data_out_r : std_logic_vector(CHANNEL_LENGTH-1 downto 0);
+    -----------------------------
+
+    ---------- FUNCTIONS ----------
+    -- Function to clip the output data to the valid range [LOWER_BOUND, HIGHER_BOUND] of signed 24-bit audio
+    function clip_data(input_val : signed) return std_logic_vector is
+    begin
+        if input_val > to_signed(HIGHER_BOUND, input_val'length) then
+            return std_logic_vector(to_signed(HIGHER_BOUND, CHANNEL_LENGTH));
+        elsif input_val < to_signed(LOWER_BOUND, input_val'length) then
+            return std_logic_vector(to_signed(LOWER_BOUND, CHANNEL_LENGTH));
+        else
+            return std_logic_vector(resize(input_val, CHANNEL_LENGTH));
+        end if;
+    end function;
+    -------------------------------
+
+begin
+    
+    ---------- INTERNAL COMPONENTS INSTANTIATIONS ----------
+    -- Left channel delay line
+    delay_inst_l : delay
+        Generic map (
+            CHANNEL_LENGTH => CHANNEL_LENGTH,
+            DELAY_LENGTH => DELAY_LENGTH,
+            DELAY_INIT => DELAY_INIT,
+            LOG2_DELAY_INCR => LOG2_DELAY_INCR
+        )
+        Port map (
+            aclk => aclk,
+            aresetn => aresetn,
+            delay_in => reg_delay,
+            data_in => y_n,
+            data_in_valid => delay_data_in_valid_l,
+            data_out => delay_data_out_l
+        );
+    
+    -- Right channel delay line
+    delay_inst_r : delay
+        Generic map (
+            CHANNEL_LENGTH => CHANNEL_LENGTH,
+            DELAY_LENGTH => DELAY_LENGTH,
+            DELAY_INIT => DELAY_INIT,
+            LOG2_DELAY_INCR => LOG2_DELAY_INCR
+        )
+        Port map (
+            aclk => aclk,
+            aresetn => aresetn,
+            delay_in => reg_delay,
+            data_in => y_n,
+            data_in_valid => delay_data_in_valid_r,
+            data_out => delay_data_out_r
+        );
+    --------------------------------------------------------
+
+    ---------- AXI4-STREAM OUTPUT FSM ----------
+	with state select s_axis_tready <=
+        '1' when WAIT_DATA,
+        '0' when others;
+
+    with state select m_axis_tvalid <=
+        '1' when SEND_DATA,
+        '0' when others;
+
+    with state select m_axis_tdata <=
+        y_n when SEND_DATA,
+        (others => '-') when others;
+        
+    with state select m_axis_tlast <=
+        reg_last when SEND_DATA,
+        '0' when others;
+	--------------------------------------------
+
+    ---------- DELAY COMPONENT INPUT FSM ----------
+    delay_data_in_valid_l <= '1' when (state = SEND_DATA and m_axis_tready = '1' and reg_last = '0') else '0';
+    
+    delay_data_in_valid_r <= '1' when (state = SEND_DATA and m_axis_tready = '1' and reg_last = '1') else '0';
+    -----------------------------------------------
+
+    ---------- PROCESSES ----------
     process (aclk)
-        variable data_gain_var : signed(CHANNEL_LENGHT - 1 downto 0);
-        variable data_gain_var_right : signed(CHANNEL_LENGHT - 1 downto 0);
+        variable mul_res : signed(CHANNEL_LENGTH+GAIN_LENGTH downto 0); -- CHANNEL_LENGTH+GAIN_LENGTH to safely perform multiplication without overflow risk
+        variable data_gain : signed(CHANNEL_LENGTH-1 downto 0);
+        variable sum_res : signed(CHANNEL_LENGTH downto 0); -- CHANNEL_LENGTH instead of CHANNEL_LENGTH-1 to safely perform addition without overflow risk
+        variable active_delay_out : std_logic_vector(CHANNEL_LENGTH-1 downto 0); -- Holds selected channel history
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
-                CURRENT_STATE     <= WAIT_LEFT;
-                write_delay_valid <= '0';
-                yn                <= (others => '0');
-                yn_right          <= (others => '0');
+                state <= WAIT_DATA;
             else
+                case state is
+                
+                    -- Wait for upstream tvalid high, then capture input data and move to COMPUTE state
+                    when WAIT_DATA =>
 
-                case CURRENT_STATE is
-                    when WAIT_LEFT =>
                         if s_axis_tvalid = '1' then
-                            if  s_axis_tlast = '0' then
-                                left_channel  <= s_axis_tdata;
-                                CURRENT_STATE <= WAIT_RIGHT;
-                            else
-                                CURRENT_STATE <= WAIT_LEFT;
-                            end if;
-                        end if;
-                        --check that in left and right channel enable_reverb is on
-                        enable_reverb_left <= enable_reverb;
-                        --use the component delay to compute y(n-delay_in only at the end)
-                        write_delay_valid <= '0';
-
-                    when WAIT_RIGHT =>
-                        if s_axis_tvalid = '1' then
-                            if  s_axis_tlast = '1' then
-                                right_channel  <= s_axis_tdata;
-
-                                if enable_reverb = '1' and enable_reverb_left = '1' then
-                                    --perform reverb
-                                    CURRENT_STATE <= MULTIPLICATION;
-                                else
-                                    --skip the reverb, and act like as a wire
-                                    CURRENT_STATE <= SEND_LEFT;
-                                    yn            <= left_channel;
-                                    yn_right      <= s_axis_tdata;     
-                                end if;
-                            else
-                                CURRENT_STATE <= WAIT_LEFT;
-                            end if;
+                            x_n <= s_axis_tdata;
+                            reg_last <= s_axis_tlast;
+                            reg_enable_reverb <= enable_reverb;
+                            reg_delay <= delay_in;
+                            reg_gain <= gain_in;
+                            state <= COMPUTE;
                         end if;
 
-                    when MULTIPLICATION =>
-                        -- when computing a multiplication is neccesary that they have the same type
-                        mul_res       <= signed(delayed_yn) * signed("0" & gain_in);    -- since gain_in is 10bit unsigned, adding a bit is needed to cast it into a signed correctly
-                        mul_res_right <= signed(delayed_yn_right) * signed("0" & gain_in);
-                        CURRENT_STATE <= ADD_DIVISION;
-
-                    when ADD_DIVISION =>
-                        -- the shift of this variable corresponds to divide by 2^GAIN_LENGHT
-                        data_gain_var := mul_res(CHANNEL_LENGHT + GAIN_LENGHT - 1 downto GAIN_LENGHT);
-                        sum_res <= resize(signed(left_channel), CHANNEL_LENGHT + 1) + resize(data_gain_var, CHANNEL_LENGHT + 1);    -- +1 bit to avoid overflow 
-
-                        data_gain_var_right := mul_res_right(CHANNEL_LENGHT + GAIN_LENGHT - 1 downto GAIN_LENGHT);
-                        sum_res_right <= resize(signed(right_channel), CHANNEL_LENGHT + 1) + resize(data_gain_var_right, CHANNEL_LENGHT + 1);
-                        
-                        CURRENT_STATE <= SATURATION;
-
-                    when SATURATION =>
-
-                        if sum_res > to_signed(HIGHER_BOUND, CHANNEL_LENGHT + 1) then
-                            yn <= std_logic_vector(to_signed(HIGHER_BOUND, CHANNEL_LENGHT));
-                        elsif sum_res < to_signed(LOWER_BOUND, CHANNEL_LENGHT + 1) then
-                            yn <= std_logic_vector(to_signed(LOWER_BOUND, CHANNEL_LENGHT));
-                        else
-                            yn <= std_logic_vector(sum_res(CHANNEL_LENGHT-1 downto 0));
+                    -- Apply reverb effect if enabled, then move to SEND_DATA state
+                    when COMPUTE =>
+                        -- Multiplex history data based on which channel is being processed
+                        if reg_last = '0' then
+                            active_delay_out := delay_data_out_l;
+                        else -- reg_last = '1'
+                            active_delay_out := delay_data_out_r;
                         end if;
                         
+                        if reg_enable_reverb = '1' then -- Reverb is enabled: apply the effect
 
-                        if sum_res_right > to_signed(HIGHER_BOUND, CHANNEL_LENGHT + 1) then
-                            yn_right <= std_logic_vector(to_signed(HIGHER_BOUND, CHANNEL_LENGHT));
-                        elsif sum_res_right < to_signed(LOWER_BOUND, CHANNEL_LENGHT + 1) then
-                            yn_right <= std_logic_vector(to_signed(LOWER_BOUND, CHANNEL_LENGHT));
-                        else
-                            yn_right <= std_logic_vector(sum_res_right(CHANNEL_LENGHT-1 downto 0));
+                            -- mul_res = gain_in * y[n - delay_in]
+                            mul_res := signed('0' & reg_gain) * signed(active_delay_out); -- Append '0' to gain_in to safely convert it to signed while maintaining it positive
+                            
+                            -- data_gain = mul_res / 2^gain_length
+                            data_gain := resize(mul_res(mul_res'high downto GAIN_LENGTH), CHANNEL_LENGTH);
+                            
+                            -- sum_res = x[n] + data_gain
+                            sum_res := resize(signed(x_n), CHANNEL_LENGTH+1) + resize(data_gain, CHANNEL_LENGTH+1);
+                            
+                            -- y[n] = sat(sum_res)
+                            y_n <= clip_data(sum_res);
+
+                        else -- Reverb is bypassed: pass the raw audio straight through
+                            y_n <= x_n;
                         end if;
+                        
+                        state <= SEND_DATA;
 
-                        CURRENT_STATE <= SEND_LEFT;
-
-                    when SEND_LEFT =>
+                    -- Wait for downstream tready high, then move back to WAIT_DATA state to process the next sample
+                    when SEND_DATA =>
                         if m_axis_tready = '1' then
-                            CURRENT_STATE <= SEND_RIGHT;
+                            state <= WAIT_DATA;
                         end if;
-
-                    when SEND_RIGHT =>
-                        if m_axis_tready = '1' then
-                            CURRENT_STATE     <= WAIT_LEFT;
-                            write_delay_valid <= '1';
-                        end if;
-
-                    when others =>
-                        CURRENT_STATE <= WAIT_LEFT;
 
                 end case;
+                
             end if;
         end if;
     end process;
+    -------------------------------
+
 end Behavioral;
