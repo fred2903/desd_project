@@ -57,7 +57,7 @@ architecture Behavioral of reverb is
     -----------------------------------------
 
     ---------- TYPES ----------
-    type state_type is (WAIT_DATA, COMPUTE, SEND_DATA);
+    type state_type is (WAIT_DATA, COMPUTE_1, COMPUTE_2, SEND_DATA);
     ---------------------------
 
     ---------- SIGNALS ----------
@@ -67,6 +67,7 @@ architecture Behavioral of reverb is
     signal reg_delay : std_logic_vector(DELAY_LENGTH-1 downto 0);
     signal reg_gain : std_logic_vector(GAIN_LENGTH-1 downto 0);
     signal state : state_type := WAIT_DATA;
+    signal mul_res : signed(CHANNEL_LENGTH+GAIN_LENGTH downto 0); -- CHANNEL_LENGTH+GAIN_LENGTH to safely perform multiplication without overflow risk
     signal y_n : std_logic_vector(CHANNEL_LENGTH-1 downto 0);
     signal delay_data_in_valid_l : std_logic;
     signal delay_data_in_valid_r : std_logic;
@@ -152,10 +153,9 @@ begin
 
     ---------- PROCESSES ----------
     process (aclk)
-        variable mul_res : signed(CHANNEL_LENGTH+GAIN_LENGTH downto 0); -- CHANNEL_LENGTH+GAIN_LENGTH to safely perform multiplication without overflow risk
         variable data_gain : signed(CHANNEL_LENGTH-1 downto 0);
         variable sum_res : signed(CHANNEL_LENGTH downto 0); -- CHANNEL_LENGTH instead of CHANNEL_LENGTH-1 to safely perform addition without overflow risk
-        variable active_delay_out : std_logic_vector(CHANNEL_LENGTH-1 downto 0); -- Holds selected channel history
+        variable active_delay_out : std_logic_vector(CHANNEL_LENGTH-1 downto 0); -- Holds selected channel y[n - delay_in]
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
@@ -172,22 +172,26 @@ begin
                             reg_enable_reverb <= enable_reverb;
                             reg_delay <= delay_in;
                             reg_gain <= gain_in;
-                            state <= COMPUTE;
+                            state <= COMPUTE_1;
                         end if;
 
                     -- Apply reverb effect if enabled, then move to SEND_DATA state
-                    when COMPUTE =>
-                        -- Multiplex history data based on which channel is being processed
+                    when COMPUTE_1 =>
+                        -- Multiplex y[n - delay_in] based on which channel is being processed
                         if reg_last = '0' then
                             active_delay_out := delay_data_out_l;
                         else -- reg_last = '1'
                             active_delay_out := delay_data_out_r;
                         end if;
                         
-                        if reg_enable_reverb = '1' then -- Reverb is enabled: apply the effect
+                        -- mul_res = gain_in * y[n - delay_in]
+                        mul_res <= signed('0' & reg_gain) * signed(active_delay_out); -- Append '0' to gain_in to safely convert it to signed while maintaining it positive
+                        
+                        state <= COMPUTE_2;
 
-                            -- mul_res = gain_in * y[n - delay_in]
-                            mul_res := signed('0' & reg_gain) * signed(active_delay_out); -- Append '0' to gain_in to safely convert it to signed while maintaining it positive
+                    -- Apply reverb effect if enabled, then move to SEND_DATA state
+                    when COMPUTE_2 =>
+                        if reg_enable_reverb = '1' then -- Reverb is enabled: apply the effect
                             
                             -- data_gain = mul_res / 2^gain_length
                             data_gain := resize(mul_res(mul_res'high downto GAIN_LENGTH), CHANNEL_LENGTH);
