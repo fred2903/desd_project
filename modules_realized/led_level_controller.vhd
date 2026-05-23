@@ -26,13 +26,13 @@ architecture Behavioral of led_level_controller is
 
     ---------- CONSTANTS ----------
     constant REFRESH_CYCLES : integer := REFRESH_TIME_MS * (1_000_000 / CLOCK_PERIOD_NS);
-    constant LOG_OFFSET : integer := CHANNEL_LENGTH-1 - NUM_LEDS; -- Bit offset for logarithmic scale mapping from last audio L/R average level to led pattern
+    constant LOG_OFFSET : integer := CHANNEL_LENGTH - NUM_LEDS; -- Bit offset for logarithmic scale mapping from last audio L/R average level to led pattern
     -------------------------------
 
     ---------- SIGNALS ----------
     signal timer_cnt : integer range 0 to REFRESH_CYCLES-1 := 0; -- Timer to achieve the desired refresh rate
     signal abs_l : unsigned(CHANNEL_LENGTH-1 downto 0) := (others => '0');
-    signal avg_level : unsigned(CHANNEL_LENGTH-2 downto 0) := (others => '0'); -- CHANNEL_LENGTH-2 is sufficient because the average between a left sample and a right sample always fits in CHANNEL_LENGTH-1 bits
+    signal avg_level : unsigned(CHANNEL_LENGTH-1 downto 0) := (others => '0');
     signal reg_led : std_logic_vector(NUM_LEDS-1 downto 0) := (others => '0');
     -----------------------------
 
@@ -77,7 +77,7 @@ begin
     ---------- PROCESSES ----------
     process (aclk)
         variable current_abs : unsigned(CHANNEL_LENGTH-1 downto 0);
-        variable sum_level : unsigned(CHANNEL_LENGTH-1 downto 0); -- CHANNEL_LENGTH-1 is sufficient to safely perform addition without overflow risk since we are summing a left sample and a right sample, where one was negative (worst case -2^(CHANNEL_LENGTH-1)) and the other is positive (worst case 2^(CHANNEL_LENGTH-1)-1) and their absolute values sum always fits in CHANNEL_LENGTH bits (worst case 2^(CHANNEL_LENGTH-1) + 2^(CHANNEL_LENGTH-1)-1 = 2^CHANNEL_LENGTH-1)
+        variable sum_level : unsigned(CHANNEL_LENGTH downto 0); -- CHANNEL_LENGTH instead of CHANNEL_LENGTH-1 to safely perform addition without overflow risk
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
@@ -111,8 +111,8 @@ begin
                         abs_l <= current_abs;
                     else
                         -- Right channel: average with left channel
-                        sum_level := abs_l + current_abs;
-                        avg_level := sum_level(CHANNEL_LENGTH-1 downto 1);
+                        sum_level := resize(abs_l, CHANNEL_LENGTH+1) + resize(current_abs, CHANNEL_LENGTH+1);
+                        avg_level <= sum_level(CHANNEL_LENGTH downto 1);
                     end if;
                     
                 end if;
