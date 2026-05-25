@@ -1,101 +1,84 @@
 library ieee;
 use ieee.std_logic_1164.all;
-use ieee.numeric_std.all;
 
 entity send_controller is
-    generic(
-        DATA_LENGTH  : positive := 16   -- 2 byte of TDATA in FLOAT COMPRESSOR
+    Generic (
+        DATA_LENGHT : positive := 16 -- 2 byte of TDATA in FLOAT COMPRESSOR
     );
-    port (
-        aclk   : in std_logic;
+    Port (
+        aclk : in std_logic;
         aresetn : in std_logic;
 
-        s_axis_tvalid	: in std_logic;
-        s_axis_tdata	: in std_logic_vector(DATA_LENGTH-1 downto 0);
-        s_axis_tlast    : in std_logic;
-        s_axis_tready	: out std_logic;
+        s_axis_tvalid : in std_logic;
+        s_axis_tdata : in std_logic_vector(DATA_LENGHT-1 downto 0);
+        s_axis_tlast : in std_logic;
+        s_axis_tready : out std_logic;
 
-        m_axis_tvalid	: out std_logic;
-        m_axis_tdata	: out std_logic_vector(DATA_LENGTH-1 downto 0);
-        m_axis_tready	: in std_logic;
+        m_axis_tvalid : out std_logic;
+        m_axis_tdata : out std_logic_vector(DATA_LENGHT-1 downto 0);
+        m_axis_tready : in std_logic;
 
-        send_audio    : in std_logic
+        send_audio : in std_logic
     );
 end entity send_controller;
 
 architecture rtl of send_controller is
-    --FSM
-    type AXI_STATE_TYPE is (WAIT_LEFT, WAIT_RIGHT, SEND_LEFT, SEND_RIGHT);
-    signal AXI_STATE          : AXI_STATE_TYPE;
-    --REG
-    signal data_left, data_right : std_logic_vector(DATA_LENGTH-1 downto 0) := (others => '0');
+
+    ---------- TYPES ----------
+    type state_type is (DISCARD, FORWARD);
+    ---------------------------
+    
+    ---------- SIGNALS ----------
+    signal state : state_type := DISCARD;
+    -----------------------------
+
 begin
---===================================================
-    with AXI_STATE select m_axis_tvalid <=
-        '1' when SEND_LEFT,
-        '1' when SEND_RIGHT,
-        '0' when others;
 
-    with AXI_STATE select s_axis_tready <=
-        '1' when WAIT_LEFT,
-        '1' when WAIT_RIGHT,
-        '0' when others;
+    ---------- AXI4-STREAM OUTPUT FSM ----------
+    with state select s_axis_tready <=
+        m_axis_tready when FORWARD,
+        '1' when DISCARD; -- Always ready to consume and drop data
 
-    with AXI_STATE select m_axis_tdata <=
-        data_left             when SEND_LEFT,
-        data_right            when SEND_RIGHT,
-        (others => '-')       when others;
---===================================================
+    with state select m_axis_tvalid <=
+        s_axis_tvalid when FORWARD,
+        '0' when DISCARD; -- Prevent downstream from reading discarded data
+
+    with state select m_axis_tdata <=
+        s_axis_tdata when FORWARD,
+        (others => '-') when DISCARD;
+    --------------------------------------------
+
+    ---------- PROCESSES ----------
     process (aclk)
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
-
-                AXI_STATE      <= WAIT_LEFT;
-                data_left      <= (others => '0');
-                data_right     <= (others => '0');
-
+                state <= DISCARD;
             else
-
-                case AXI_STATE is
-                    when WAIT_LEFT =>
-                        if s_axis_tvalid = '1' and send_audio = '1' then
-                            if  s_axis_tlast = '0' then
-                                data_left  <= s_axis_tdata;
-                                AXI_STATE  <= WAIT_RIGHT;
-                            else
-                                AXI_STATE     <= WAIT_LEFT;
+                case state is
+                    
+                    -- Wait for upstream tvalid and tlast high, then check if send_audio requires to move to FORWARD state
+                    when DISCARD =>
+                        -- Wait until the end of the current packet before checking if the next packet should be forwarded
+                        if s_axis_tvalid = '1' and s_axis_tlast = '1' then
+                            if send_audio = '1' then
+                                state <= FORWARD;
                             end if;
                         end if;
 
-                    when WAIT_RIGHT =>
-                        if s_axis_tvalid = '1' and send_audio = '1' then
-                            -- check that after have receaved the right channel, the next packet is a left channel
-                            if  s_axis_tlast = '1' then
-                                data_right  <= s_axis_tdata;
-                                AXI_STATE  <= SEND_LEFT;
-                            else
-                            -- otherwise return to the previous state, in order to not stop the axis
-                                AXI_STATE     <= WAIT_LEFT;
+                    -- Wait for upstream tvalid and tlast high, and for downstream tready high, then check if send_audio requires to move to DISCARD state
+                    when FORWARD =>
+                        -- Wait until the end of the current packet before checking if the next packet should be discarded
+                        if s_axis_tvalid = '1' and s_axis_tlast = '1' and m_axis_tready = '1' then
+                            if send_audio = '0' then
+                                state <= DISCARD;
                             end if;
                         end if;
 
-                    when SEND_LEFT =>
-                        if m_axis_tready = '1' then
-                            AXI_STATE     <= SEND_RIGHT;
-                        end if;
-
-                    when SEND_RIGHT =>
-                        if m_axis_tready = '1' then
-                            AXI_STATE     <= WAIT_LEFT;
-                        end if;
-
-                    when others =>
-                        AXI_STATE <= WAIT_LEFT;
-                        
                 end case;
             end if;
         end if;
     end process;
+    -------------------------------
 
 end rtl;
