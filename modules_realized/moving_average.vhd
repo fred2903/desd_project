@@ -44,11 +44,9 @@ architecture Behavioral of moving_average is
     signal reg_sum_l : signed(CHANNEL_LENGTH+LOG2_LEN-1 downto 0) := (others => '0');
     signal fifo_l : fifo_type;
     signal ptr_l : unsigned(LOG2_LEN-1 downto 0) := (others => '0');
-    signal wrapped_l : std_logic := '0';
     signal reg_sum_r : signed(CHANNEL_LENGTH+LOG2_LEN-1 downto 0) := (others => '0');
     signal fifo_r : fifo_type;
     signal ptr_r : unsigned(LOG2_LEN-1 downto 0) := (others => '0');
-    signal wrapped_r : std_logic := '0';
     signal reg_oldest : signed(CHANNEL_LENGTH-1 downto 0);
     signal processed_data : std_logic_vector(CHANNEL_LENGTH-1 downto 0);
     -----------------------------
@@ -79,14 +77,13 @@ begin
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
-                -- Instead of resetting the FIFO arrays, which would require iterating over all their entries, it is possible to simply reset the pointers and wrapped flags to create the effect of empty FIFOs until they get filled up with new incoming samples. This approach is more efficient in terms of resources usage (BRAM-allocation friendly) and avoids unnecessary writes to the FIFO arrays, which can be large depending on the value of LOG2_LEN
                 state <= WAIT_DATA;
                 reg_sum_l <= (others => '0');
                 ptr_l <= (others => '0');
-                wrapped_l <= '0';
+                fifo_l <= (others => (others => '0'));
                 reg_sum_r <= (others => '0');
                 ptr_r <= (others => '0');
-                wrapped_r <= '0';
+                fifo_r <= (others => (others => '0'));
             else
                 case state is
 
@@ -104,21 +101,9 @@ begin
 
                         -- Retrieve the oldest sample based on which channel is active
                         if reg_last = '0' then -- Left channel sample
-
-                            if wrapped_l = '1' then -- fifo_l has been filled at least once, so the value at ptr_l is valid
-                                reg_oldest <= fifo_l(to_integer(ptr_l));
-                            else -- Safely ignore fifo_l junk values
-                                reg_oldest <= (others => '0');
-                            end if;
-
+                            reg_oldest <= fifo_l(to_integer(ptr_l));
                         else -- Right channel sample
-
-                            if wrapped_r = '1' then -- fifo_r has been filled at least once, so the value at ptr_r is valid
-                                reg_oldest <= fifo_r(to_integer(ptr_r));
-                            else -- Safely ignore fifo_r junk values
-                                reg_oldest <= (others => '0');
-                            end if;
-
+                            reg_oldest <= fifo_r(to_integer(ptr_r));
                         end if;
 
                         state <= COMPUTE_2;
@@ -132,11 +117,8 @@ begin
                             next_sum := reg_sum_l + reg_data - reg_oldest;
                             reg_sum_l <= next_sum;
 
-                            -- Store new sample in fifo_l, check if ptr_l is about to roll over in order to set wrapped_l flag and increment ptr_l
+                            -- Store new sample in fifo_l and increment ptr_l
                             fifo_l(to_integer(ptr_l)) <= reg_data;
-                            if ptr_l = FIFO_DEPTH-1 then
-                                wrapped_l <= '1';
-                            end if;
                             ptr_l <= ptr_l + 1; -- Pointer will wrap around due to unsigned overflow, creating a circular buffer
 
                         else -- Right channel sample
@@ -145,18 +127,15 @@ begin
                             next_sum := reg_sum_r + reg_data - reg_oldest;
                             reg_sum_r <= next_sum;
 
-                            -- Store new sample in fifo_r, check if ptr_r is about to roll over in order to set wrapped_r flag and increment ptr_r
+                            -- Store new sample in fifo_r and increment ptr_r
                             fifo_r(to_integer(ptr_r)) <= reg_data;
-                            if ptr_r = FIFO_DEPTH-1 then
-                                wrapped_r <= '1';
-                            end if;
                             ptr_r <= ptr_r + 1; -- Pointer will wrap around due to unsigned overflow, creating a circular buffer
 
                         end if;
 
                         -- Assign output based on filter enable
                         if reg_enable_filter = '1' then
-                            -- Division by the number of samples in the FIFO 2^LOG2_LEN using shift left
+                            -- Division by the number of samples in the FIFO 2^LOG2_LEN using shift right
                             processed_data <= std_logic_vector(next_sum(CHANNEL_LENGTH+LOG2_LEN-1 downto LOG2_LEN));
                         else
                             processed_data <= std_logic_vector(reg_data);

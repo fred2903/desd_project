@@ -17,7 +17,8 @@ architecture rtl of binary_to_decimal is
 
 begin
 
-    process(clk)
+    ---------- PROCESSES ----------
+    process (clk)
         variable bin_int : integer range 0 to 127;
         variable decade : integer range 0 to 9;
         variable unit : integer range 0 to 9;
@@ -31,7 +32,7 @@ begin
                 decade := 9;
                 unit := 9;
             else
-                -- Division and modulo by constants and within small ranges can be automatically synthesized efficiently
+                -- Division and modulo by constants (here 10) and within small ranges for the input (here 7-bit data) can be automatically synthesized efficiently by Vivado with LUTs, hence not allocating costly DSP dividers (behavior already verified). For this reason, implementing a complex algorithm for efficient division in hardware, like Double Dabble, is not necessary and would be an overkill for this specific use case
                 decade := bin_int / 10;
                 unit := bin_int mod 10;
             end if;
@@ -41,5 +42,6 @@ begin
             unit_digit <= std_logic_vector(to_unsigned(unit, 4));
         end if;
     end process;
+    -------------------------------
 
 end architecture;

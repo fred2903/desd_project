@@ -1,6 +1,6 @@
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
-use IEEE.NUMERIC_STD.ALL;
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
 entity volume_controller is
 	Generic (
@@ -49,6 +49,7 @@ architecture Behavioral of volume_controller is
 	-----------------------------
 
 	---------- FUNCTIONS ----------
+    -- Function to clip the output data to the valid range [LOWER_BOUND, HIGHER_BOUND] of signed 24-bit audio
     function clip_data(input_val : signed) return std_logic_vector is
     begin
         if input_val > to_signed(HIGHER_BOUND, input_val'length) then
@@ -83,7 +84,7 @@ begin
 
 	---------- PROCESSES ----------
 	process (aclk)
-		variable delta_volume : signed(VOLUME_WIDTH downto 0); -- VOLUME_WIDTH instead of VOLUME_WIDTH-1 bits to safely perform subtraction without overflow risk
+		variable delta_volume : signed(VOLUME_WIDTH downto 0); -- VOLUME_WIDTH instead of VOLUME_WIDTH-1 to safely perform subtraction without overflow risk
     	variable exponent : integer;
         variable shifted_data : signed(EXT_WIDTH-1 downto 0); -- Buffer for shifting the volume-adjusted value, extended to accommodate potential overflow during shifting
     begin
@@ -105,7 +106,7 @@ begin
                     -- Apply exponential gain and clip the output, then move to SEND_DATA state
                     when COMPUTE =>
                         -- Calculate shift amount
-                        delta_volume := signed('0'&reg_volume) - HALF_VOL;
+                        delta_volume := signed('0' & reg_volume) - HALF_VOL;
                         exponent := to_integer(shift_right(delta_volume, VOLUME_STEP_2));
                         
                         -- Apply shift (exponential gain)

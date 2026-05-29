@@ -1,6 +1,5 @@
 library ieee;
 use ieee.std_logic_1164.all;
-use ieee.numeric_std.all;
 
 entity driver_4_7seg is
     Generic (
@@ -33,7 +32,7 @@ architecture Behavioral of driver_4_7seg is
     signal num: std_logic_vector(3 downto 0);
     signal seg_s: std_logic_vector(0 to 6);
     signal state : state_type := DIGIT1;
-    signal timer_cnt : integer range 0 to MUX_CYCLES-1 := 0;
+    signal timer_cnt : integer range 0 to MUX_CYCLES-1 := 0;  -- Timer to achieve the desired multiplexing rate
     -----------------------------
 
 begin

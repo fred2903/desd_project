@@ -48,6 +48,7 @@ architecture Behavioral of output_sel is
 	-----------------------------
 
 	---------- FUNCTIONS ----------
+	-- Function to clip the output data to the valid range [LOWER_BOUND, HIGHER_BOUND] of signed 24-bit audio
     function clip_data(input_val : signed) return std_logic_vector is
     begin
         if input_val > to_signed(HIGHER_BOUND, input_val'length) then
@@ -61,6 +62,26 @@ architecture Behavioral of output_sel is
     -------------------------------
 
 begin
+
+	---------- AXI4-STREAM OUTPUT FSM ----------
+    with state select s_axis_tready <=
+        '1' when WAIT_LEFT_DATA | WAIT_RIGHT_DATA,
+        '0' when others;
+
+    with state select m_axis_tvalid <=
+        '1' when SEND_LEFT_DATA | SEND_RIGHT_DATA,
+        '0' when others;
+
+    with state select m_axis_tdata <=
+        processed_left_data when SEND_LEFT_DATA,
+        processed_right_data when SEND_RIGHT_DATA,
+        (others => '-') when others;
+
+    with state select m_axis_tlast <=
+        '0' when SEND_LEFT_DATA,
+		'1' when SEND_RIGHT_DATA,
+        '0' when others;
+    --------------------------------------------
 
 	---------- LEDS OUTPUT FSM ----------
 	with out_sel select led_r <= 
@@ -94,30 +115,10 @@ begin
 		(others => '0') when lmr_lpr;
 	-------------------------------------
 
-	---------- AXI4-STREAM OUTPUT FSM ----------
-    with state select s_axis_tready <=
-        '1' when WAIT_LEFT_DATA | WAIT_RIGHT_DATA,
-        '0' when others;
-
-    with state select m_axis_tvalid <=
-        '1' when SEND_LEFT_DATA | SEND_RIGHT_DATA,
-        '0' when others;
-
-    with state select m_axis_tdata <=
-        processed_left_data when SEND_LEFT_DATA,
-        processed_right_data when SEND_RIGHT_DATA,
-        (others => '-') when others;
-
-    with state select m_axis_tlast <=
-        '0' when SEND_LEFT_DATA,
-		'1' when SEND_RIGHT_DATA,
-        '0' when others;
-    --------------------------------------------
-
 	---------- PROCESSES ----------
 	process (aclk)
-		variable sum_lr : signed(TDATA_WIDTH downto 0); -- TDATA_WIDTH instead of TDATA_WIDTH-1 bits to safely perform subtraction without overflow risk
-        variable diff_lr : signed(TDATA_WIDTH downto 0); -- TDATA_WIDTH instead of TDATA_WIDTH-1 bits to safely perform addition without overflow risk
+		variable sum_lr : signed(TDATA_WIDTH downto 0); -- TDATA_WIDTH instead of TDATA_WIDTH-1 to safely perform addition without overflow risk
+        variable diff_lr : signed(TDATA_WIDTH downto 0); -- TDATA_WIDTH instead of TDATA_WIDTH-1 to safely perform subtraction without overflow risk
 	begin
 		if (rising_edge(aclk)) then
 			if aresetn = '0' then
@@ -144,11 +145,13 @@ begin
                             state <= WAIT_RIGHT_DATA;
                         end if;
 
-                    -- Wait for upstream tvalid high and tlast high, then capture input left data and move to COMPUTE state
+                    -- Wait for upstream tvalid high and tlast high, then capture input right data and move to COMPUTE state
                     when WAIT_RIGHT_DATA =>
                         if s_axis_tvalid = '1' and s_axis_tlast = '1' then
                             reg_right_data <= signed(s_axis_tdata);
                             state <= COMPUTE;
+						elsif s_axis_tvalid = '1' and s_axis_tlast = '0' then -- If a new left sample arrives before a right sample, capture it immediately as self healing mechanism and stay in WAIT_RIGHT_DATA state
+							reg_left_data <= signed(s_axis_tdata);
                         end if;
 
 					-- Perform the selected output processing based on out_sel, then move to SEND_LEFT_DATA state to output the left sample

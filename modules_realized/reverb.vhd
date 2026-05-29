@@ -163,7 +163,7 @@ begin
             else
                 case state is
                 
-                    -- Wait for upstream tvalid high, then capture input data and move to COMPUTE state
+                    -- Wait for upstream tvalid high, then capture input data and move to COMPUTE_1 state
                     when WAIT_DATA =>
 
                         if s_axis_tvalid = '1' then
@@ -175,7 +175,7 @@ begin
                             state <= COMPUTE_1;
                         end if;
 
-                    -- Apply reverb effect if enabled, then move to SEND_DATA state
+                    -- Apply reverb effect, if it is enabled, to calculate y[n] in the next two states (COMPUTE_1 and COMPUTE_2)
                     when COMPUTE_1 =>
                         -- Multiplex y[n - delay_in] based on which channel is being processed
                         if reg_last = '0' then
@@ -189,7 +189,6 @@ begin
                         
                         state <= COMPUTE_2;
 
-                    -- Apply reverb effect if enabled, then move to SEND_DATA state
                     when COMPUTE_2 =>
                         if reg_enable_reverb = '1' then -- Reverb is enabled: apply the effect
                             

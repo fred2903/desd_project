@@ -6,7 +6,7 @@ entity balance_controller is
 	Generic (
 		TDATA_WIDTH : positive := 24; -- Audio, 3 bytes
 		BALANCE_WIDTH : positive := 10;
-		BALANCE_STEP_2 : positive := 6 -- i.e., balance_values_per_step = 2**VOLUME_STEP_2
+		BALANCE_STEP_2 : positive := 6 -- i.e., balance_values_per_step = 2**BALANCE_STEP_2
 	);
 	Port (
 		aclk : in std_logic;
@@ -66,7 +66,7 @@ begin
 
 	---------- PROCESSES ----------
 	process (aclk)
-        variable delta_balance : signed(BALANCE_WIDTH downto 0); -- BALANCE_WIDTH instead of BALANCE_WIDTH-1 bits to safely perform subtraction without overflow risk
+        variable delta_balance : signed(BALANCE_WIDTH downto 0); -- BALANCE_WIDTH instead of BALANCE_WIDTH-1 to safely perform subtraction without overflow risk
         variable exponent : integer;
         variable shifted_data : signed(TDATA_WIDTH-1 downto 0);
     begin
@@ -88,7 +88,7 @@ begin
                     -- Apply attenuation based on balance signal and channel, then move to SEND_DATA state
                     when COMPUTE =>
                         -- Calculate shift amount
-                        delta_balance := signed('0'&reg_balance) - HALF_BAL;
+                        delta_balance := signed('0' & reg_balance) - HALF_BAL;
                         exponent := to_integer(shift_right(delta_balance, BALANCE_STEP_2));
 						shifted_data := reg_data;
 

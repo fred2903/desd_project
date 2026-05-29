@@ -1,5 +1,6 @@
-library IEEE;
-use IEEE.STD_LOGIC_1164.ALL;
+library ieee;
+use ieee.std_logic_1164.all;
+use ieee.numeric_std.all;
 
 entity digilent_jstk2 is
 	Generic (
@@ -7,16 +8,16 @@ entity digilent_jstk2 is
 		CLKFREQ : integer := 100_000_000; -- Base time
 		SPI_SCLKFREQ : integer := 66_666 -- Base time
 	);
-	Port ( 
+	Port (
 		aclk : in std_logic;
 		aresetn : in std_logic;
 
-		m_axis_tvalid : out std_logic;
-		m_axis_tdata : out std_logic_vector(7 downto 0);
-		m_axis_tready : in std_logic;
-
 		s_axis_tvalid : in std_logic;
 		s_axis_tdata : in std_logic_vector(7 downto 0);
+
+        m_axis_tvalid : out std_logic;
+		m_axis_tdata : out std_logic_vector(7 downto 0);
+		m_axis_tready : in std_logic;
 
 		jstk_x : out std_logic_vector(9 downto 0);
 		jstk_y : out std_logic_vector(9 downto 0);
@@ -34,6 +35,7 @@ architecture Behavioral of digilent_jstk2 is
 	---------- CONSTANTS ----------
 	constant CMDSETLEDRGB : std_logic_vector(7 downto 0) := x"84";
 	constant DELAY_CYCLES : integer := DELAY_US * (CLKFREQ / 1_000_000) + CLKFREQ / SPI_SCLKFREQ; -- Inter-packet delay plus the time needed to transfer 1 byte (for the CS de-assertion)
+    constant HALF_JSTK_FSR : integer := 512; -- Joystick Full Scale Range is 1024, so half FSR is 512
 	-------------------------------
 
 	---------- TYPES ----------
@@ -44,6 +46,8 @@ architecture Behavioral of digilent_jstk2 is
 	---------- SIGNALS ----------
     signal tx_state : tx_state_type := WAIT_DELAY;
     signal rx_state : rx_state_type := GET_X_L;
+    signal jstk_x_tmp : std_logic_vector(9 downto 0);
+	signal jstk_y_tmp : std_logic_vector(9 downto 0);
     signal timer_cnt : integer range 0 to DELAY_CYCLES-1 := 0;
 	-----------------------------
 
@@ -75,7 +79,7 @@ begin
 
 					-- Wait for the required delay before sending the next packet
                     when WAIT_DELAY =>
-                        if timer_cnt >= DELAY_CYCLES-1 then -- >= instead of = for safer comparison in case of any timing issues
+                        if timer_cnt >= DELAY_CYCLES-1 then -- >= instead of = for safer comparison in case of timing issues
                             timer_cnt <= 0;
                             tx_state <= SEND_HEADER;
                         else
@@ -115,37 +119,41 @@ begin
 
     -- Receiver processes 5-byte packet [X_L, X_H, Y_L, Y_H, Buttons]
     process (aclk)
-		variable jstk_x_tmp : std_logic_vector(9 downto 0);
-		variable jstk_y_tmp : std_logic_vector(9 downto 0);
     begin
         if rising_edge(aclk) then
             if aresetn = '0' then
                 rx_state <= GET_X_L;
+
+                -- Set joystick outputs to center position and buttons released as default
+                jstk_x <= std_logic_vector(to_unsigned(HALF_JSTK_FSR, 10));
+                jstk_y <= std_logic_vector(to_unsigned(HALF_JSTK_FSR, 10));
+                btn_jstk <= '0';
+                btn_trigger <= '0';
             else
-                -- We consume data whenever tvalid is high (always ready)
+                -- Consume data whenever tvalid is high (always ready)
                 if s_axis_tvalid = '1' then
                     case rx_state is
                         
                         -- Process the 5-byte packet sequentially, waiting for tvalid high before processing each byte
                         when GET_X_L =>
-							jstk_x_tmp(7 downto 0) := s_axis_tdata;
+							jstk_x_tmp(7 downto 0) <= s_axis_tdata;
                             rx_state <= GET_X_H;
 
                         when GET_X_H =>
-                            jstk_x_tmp(9 downto 8) := s_axis_tdata(1 downto 0);
-                            jstk_x <= jstk_x_tmp;
+                            jstk_x_tmp(9 downto 8) <= s_axis_tdata(1 downto 0);
                             rx_state <= GET_Y_L;
 
                         when GET_Y_L =>
-                            jstk_y_tmp(7 downto 0) := s_axis_tdata;
+                            jstk_y_tmp(7 downto 0) <= s_axis_tdata;
                             rx_state <= GET_Y_H;
 
                         when GET_Y_H =>
-                            jstk_y_tmp(9 downto 8) := s_axis_tdata(1 downto 0);
-                            jstk_y <= jstk_y_tmp;
+                            jstk_y_tmp(9 downto 8) <= s_axis_tdata(1 downto 0);
                             rx_state <= GET_BUTTONS;
 
                         when GET_BUTTONS =>
+                            jstk_x <= jstk_x_tmp;
+                            jstk_y <= jstk_y_tmp;
                             btn_jstk <= s_axis_tdata(0); 
                             btn_trigger <= s_axis_tdata(1); 
                             rx_state <= GET_X_L;

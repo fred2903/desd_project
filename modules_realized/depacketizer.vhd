@@ -76,7 +76,7 @@ begin
                         else
                             reg_sec <= reg_sec - 1;
                             
-                            -- To stop the acquisition precisely when the timer reaches 00:00, the evaluation is performed at reg_min = 0 and reg_sec = 1, so it turns off immediately as reg_sec hits 0
+                            -- When the timer reaches 00:00, stop acquisition
                             if reg_min = 0 and reg_sec = 1 then
                                 reg_send_audio <= '0';
                             end if;

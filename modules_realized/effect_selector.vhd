@@ -24,7 +24,7 @@ end effect_selector;
 architecture Behavioral of effect_selector is
 
     ---------- CONSTANTS ----------
-    constant HALF_BAL_VOL : integer := 2**(JOYSTICK_LENGTH-1); -- half of the range for balance/volume
+    constant HALF_JSTK_FSR : integer := 2**(JOYSTICK_LENGTH-1); -- half of joystick Full Scale Range
     -------------------------------
 
 begin
@@ -34,10 +34,11 @@ begin
     begin
         if rising_edge(clk) then
             if resetn = '0' then
-                gain <= (others => '0');
-                delay <= (others => '0');
-                balance <= std_logic_vector(to_unsigned(HALF_BAL_VOL, JOYSTICK_LENGTH));
-                volume <= std_logic_vector(to_unsigned(HALF_BAL_VOL, JOYSTICK_LENGTH));
+                -- Set volume, balance, gain, and delay to center values as default
+                gain <= std_logic_vector(to_unsigned(HALF_JSTK_FSR, JOYSTICK_LENGTH));
+                delay <= std_logic_vector(to_unsigned(HALF_JSTK_FSR, JOYSTICK_LENGTH));
+                balance <= std_logic_vector(to_unsigned(HALF_JSTK_FSR, JOYSTICK_LENGTH));
+                volume <= std_logic_vector(to_unsigned(HALF_JSTK_FSR, JOYSTICK_LENGTH));
             else
                 if effect = '1' then
                     gain <= jstck_x;
