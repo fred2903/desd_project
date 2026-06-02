@@ -35,14 +35,14 @@
 
 \section*{Timing Analysis}
 
-% test
-The implemented design demonstrates the timing analysis yields compliant results for both setup and hold constraints at the target operating frequency of 150~MHz.
+The implemented design demonstrates the timing analysis yields compliant results for both setup and hold constraints at the target operating frequency of 151~MHz.
 
-Regarding the setup time, the most critical path is located within the \texttt{moving\_average\_0} block (Path 21). While the design requirement demands a 150~MHz clock, this implementation achieves a positive slack of 0.190~ns. This safety margin allows the circuit to potentially operate at a maximum frequency of approximately 154~MHz.
+Regarding the setup time, the most critical path is located within the \texttt{moving\_average\_0} block (Path 21). While the design requirement demands a 151~MHz clock, this implementation achieves a positive slack of 0.230~ns. This safety margin allows the circuit to potentially operate at a maximum frequency of approximately 155~MHz.
 
-Concerning the hold time, the critical path is identified along the data route from the \texttt{diligent\_jstk2\_0} module to the \texttt{effect\_selector\_0} unit (Path 31). The required hold time constraint is 0~ns, and the implementation guarantees a safe positive hold slack of 0.026~ns, ensuring that no race conditions occur.
+Concerning the hold time, the critical path is located within the \texttt{axis\_fifo\_0} (Path 31). The required hold time constraint is 0~ns, and the implementation guarantees a safe positive hold slack of 0.049~ns, ensuring that no race conditions occur.
 
 The detailed parameters resulting from the implementation are summarized in Table~\ref{tab:setup_report} for setup time and in Table~\ref{tab:hold_report} for hold time below, related to the above mentioned most critical paths.
+
 \begin{table}[H]
     \centering 
     \begin{minipage}[b]{0.48\textwidth}
@@ -55,13 +55,13 @@ The detailed parameters resulting from the implementation are summarized in Tabl
             \toprule
             \textbf{Parameter} & \textbf{Value} & \textbf{Unit} \\
             \midrule
-            Slack             & 0.190 & ns \\
-            Requirement       & 6.731 & ns \\
-            Data Path Delay   & 6.519 & ns \\
-            \quad \textit{Logic Delay} & 2.916 & ns \\
-            \quad \textit{Route Delay} & 3.603 & ns \\
-            Clock Path Skew   & 0.063 & ns \\
-            Clock Uncertainty & 0.116 & ns \\
+            Slack             & 0.230 & ns \\
+            Requirement       & 6.627 & ns \\
+            Data Path Delay   & 6.235 & ns \\
+            \quad \textit{Logic Delay} & 3.288 & ns \\
+            \quad \textit{Route Delay} & 2.947 & ns \\
+            Clock Path Skew   & -0.113 & ns \\
+            Clock Uncertainty & 0.079 & ns \\
             \bottomrule
         \end{tabular}
     \end{minipage}%
@@ -76,13 +76,12 @@ The detailed parameters resulting from the implementation are summarized in Tabl
             \toprule
             \textbf{Parameter} & \textbf{Value} & \textbf{Unit} \\
             \midrule
-            Slack             & 0.026 & ns \\
+            Slack             & 0.049 & ns \\
             Requirement       & 0.000 & ns \\
-            Data Path Delay   & 0.360 & ns \\
-            \quad \textit{Logic Delay} & 0.141 & ns \\
-            \quad \textit{Route Delay} & 0.219 & ns \\
-            Clock Path Skew   & 0.263 & ns \\
-            Clock Uncertainty & 0.116 & ns \\ 
+            Data Path Delay   & 0.533 & ns \\
+            \quad \textit{Logic Delay} & 0.184 & ns \\
+            \quad \textit{Route Delay} & 0.349 & ns \\
+            Clock Path Skew   & 0.352 & ns \\
             \bottomrule
         \end{tabular}
     \end{minipage}
@@ -91,7 +90,7 @@ The detailed parameters resulting from the implementation are summarized in Tabl
 
 \section*{Power Analysis}
 
-At the operating frequency of 150 MHz, the following implementation's power consumption is as shown in the following tables.
+At the operating frequency of 151 MHz, the following implementation's power consumption is as shown in the following tables.
 
 \begin{table}[H]
     \centering 
@@ -105,11 +104,11 @@ At the operating frequency of 150 MHz, the following implementation's power cons
             \toprule
             \textbf{Parameter} & \textbf{Value} & \textbf{Unit} \\
             \midrule
-            Total On-Chip Power            & 0.325 & W   \\
+            Total On-Chip Power            & 0.335 & W   \\
             Design Power Budget            & N/A   & --  \\
             Power Budget Margin            & N/A   & --  \\
-            Junction Temperature           & 26.6  & °C  \\
-            Thermal Margin                 & 58.4  & °C  \\
+            Junction Temperature           & 26.7  & °C  \\
+            Thermal Margin                 & 58.3  & °C  \\
             Effective $\theta_{JA}$        & 5.0   & °C/W\\
             Power to Off-Chip Devices      & 0     & W   \\
             Confidence Level               & Low   & --  \\
@@ -127,16 +126,16 @@ At the operating frequency of 150 MHz, the following implementation's power cons
             \toprule
             \textbf{Component} & \textbf{Power} & \textbf{Unit} & \textbf{Ratio (\%)} \\
             \midrule
-            \textbf{Dynamic}   & \textbf{0.252} & \textbf{W} & \textbf{77\%} \\
-            \quad \textit{MMCM}               & 0.125 & W & 50\% \\
-            \quad \textit{BRAM}               & 0.077 & W & 30\% \\
-            \quad \textit{Clocks}             & 0.017 & W &  7\% \\
-            \quad \textit{I/O}                & 0.016 & W &  6\% \\
-            \quad \textit{Signals}            & 0.010 & W &  4\% \\
-            \quad \textit{Logic}              & 0.008 & W &  3\% \\
-            \quad \textit{DSP}                & 0.000 & W &  0\% \\
+            \textbf{Dynamic}   & \textbf{0.261} & \textbf{W} & \textbf{78\%} \\
+            \quad \textit{MMCM}               & 0.126 & W & 48\% \\
+            \quad \textit{BRAM}               & 0.078 & W & 30\% \\
+            \quad \textit{I/O}                & 0.017 & W &  6\% \\
+            \quad \textit{Clocks}             & 0.018 & W &  7\% \\
+            \quad \textit{Signals}            & 0.012 & W &  5\% \\
+            \quad \textit{Logic}              & 0.009 & W &  3\% \\
+            \quad \textit{DSP}                & 0.002 & W &  1\% \\
             \midrule
-            \textbf{Device Static} & \textbf{0.074} & \textbf{W} & \textbf{23\%} \\
+            \textbf{Device Static} & \textbf{0.074} & \textbf{W} & \textbf{22\%} \\
             \bottomrule
         \end{tabular}
     \end{minipage}
