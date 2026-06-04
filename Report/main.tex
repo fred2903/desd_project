@@ -1,0 +1,148 @@
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}  
+\usepackage[dutch]{babel}    
+\usepackage{hyperref}        
+\usepackage{booktabs}		 
+\usepackage{a4wide}          
+\pagestyle{empty}            
+\usepackage{graphicx}        
+\usepackage{grffile}         
+\usepackage{caption}         
+\usepackage{float}
+\usepackage{fancyhdr}
+\usepackage{titling}
+\setlength{\droptitle}{-2cm} 
+\posttitle{\end{center}\vspace{-0.5cm}} 
+\postauthor{\end{center}\vspace{-0.5cm}} 
+\predate{\begin{center}}
+\postdate{\end{center}\vspace{-0.8cm}} 
+
+\title{Digital Electronic Systems Design Project Report}
+\author{Federico Ferro, Simone Guan, Xiao Chen Wang, Cheng Marco Zhang}
+\date{Academic Year 2025/2026} 
+
+\begin{document}
+
+\fancypagestyle{plain}{
+    \fancyhf{}
+    \lfoot{\footnotesize Politecnico di Milano}
+    \rfoot{\footnotesize Spring 2026: Digital Electronic Systems Design}
+    \renewcommand{\headrulewidth}{0pt}
+    \renewcommand{\footrulewidth}{0pt}
+}
+
+
+\maketitle               
+\section*{Timing Analysis}
+
+% test
+From our implementation, the timing analysis yields compliant results for both setup and hold constraints at the target operating frequency of 150~MHz.
+
+Regarding the setup time, the most critical path is located within the output selector (Path 21). While the design requirement demands a 150~MHz clock, this implementation achieves a positive slack of 0.230~ns. This safety margin allows the circuit to potentially operate at a maximum frequency of approximately 160~MHz.
+
+Concerning the hold time, the critical path is identified within the \texttt{axis\_fifo\_0} module (Path 31). 
+The required hold time constraint is 0~ns, and our implementation guarantees a safe positive hold slack of 0.230~ns, ensuring that no race conditions occur.
+
+The detailed parameters resulting from the implementation are summarized in Table 1 for setup time and Table 2 for hold time below.
+\begin{table}[H]
+    \centering 
+    \begin{minipage}[b]{0.48\textwidth}
+        \flushleft
+        \captionsetup{type=table, singlelinecheck=false, justification=raggedright, skip=2pt}
+        \caption{Timing Summary: Setup Time (Path 21)}
+        \label{tab:setup_report}
+        \small
+        \begin{tabular}{lrc}
+            \toprule
+            \textbf{Parameter} & \textbf{Value} & \textbf{Unit} \\
+            \midrule
+            Slack             & 0.230 & ns \\
+            Requirement       & 6.627 & ns \\
+            Data Path Delay   & 6.235 & ns \\
+            \quad \textit{Logic Delay} & 3.288 & ns \\
+            \quad \textit{Route Delay} & 2.947 & ns \\
+            Clock Path Skew   & -0.113 & ns \\
+            %%Clock Uncertainty & 0.116 & ns \\
+            \bottomrule
+        \end{tabular}
+    \end{minipage}%
+    \hfill 
+    \begin{minipage}[b]{0.48\textwidth}
+        \flushleft
+        \captionsetup{type=table, singlelinecheck=false, justification=raggedright, skip=2pt}
+        \caption{Timing Summary: Hold Time (Path 31)}
+        \label{tab:hold_report}
+        \small
+        \begin{tabular}{lrc}
+            \toprule
+            \textbf{Parameter} & \textbf{Value} & \textbf{Unit} \\
+            \midrule
+            Slack             & 0.049 & ns \\
+            Requirement       & 0.000 & ns \\
+            Data Path Delay   & 0.533 & ns \\
+            \quad \textit{Logic Delay} & 0.184 & ns \\
+            \quad \textit{Route Delay} & 0.349 & ns \\
+            Clock Path Skew   & 0.352 & ns \\
+            %%Clock Uncertainty & 0.116 & ns \\ 
+            \bottomrule
+        \end{tabular}
+    \end{minipage}
+    
+\end{table}
+
+
+\section*{Power Analysis}
+
+At the operating frequency of 150 MHz, the following implementation's power consumption is as showed in the following tabels.
+
+\begin{table}[H]
+    \centering 
+    \begin{minipage}[b]{0.46\textwidth}
+        \flushleft
+        \captionsetup{type=table, singlelinecheck=false, justification=raggedright, skip=2pt}
+        \caption{Power Analysis Summary.}
+        \label{tab:main_power}
+        \small
+        \begin{tabular}{lrc}
+            \toprule
+            \textbf{Parameter} & \textbf{Value} & \textbf{Unit} \\
+            \midrule
+            Total On-Chip Power            & 0.335 & W   \\
+            Design Power Budget            & N/A   & --  \\
+            Power Budget Margin            & N/A   & --  \\
+            Junction Temperature           & 26.7  & °C  \\
+            Thermal Margin                 & 58.3  & °C  \\
+            Effective $\theta_{JA}$        & 5.0   & °C/W\\
+            Power to Off-Chip Devices      & 0     & W   \\
+            Confidence Level               & Low   & --  \\
+            \bottomrule
+        \end{tabular}
+    \end{minipage}%
+    \hfill 
+    \begin{minipage}[b]{0.50\textwidth}
+        \flushleft
+        \captionsetup{type=table, singlelinecheck=false, justification=raggedright, skip=2pt}
+        \caption{On-Chip Power Breakdown.}
+        \label{tab:power_dynamic_breakdown}
+        \small
+        \begin{tabular}{lrcc}
+            \toprule
+            \textbf{Component} & \textbf{Power} & \textbf{Unit} & \textbf{Ratio (\%)} \\
+            \midrule
+            \textbf{Dynamic}   & \textbf{0.252} & \textbf{W} & \textbf{78\%} \\
+            \quad \textit{MMCM}               & 0.126 & W & 48\% \\
+            \quad \textit{BRAM}               & 0.078 & W & 30\% \\
+            \quad \textit{Clocks}             & 0.018 & W &  7\% \\
+            \quad \textit{I/O}                & 0.017 & W &  6\% \\
+            \quad \textit{Signals}            & 0.012 & W &  5\% \\
+            \quad \textit{Logic}              & 0.009 & W &  3\% \\
+            \quad \textit{DSP}                & 0.002 & W &  1\% \\
+            \midrule
+            \textbf{Device Static} & \textbf{0.074} & \textbf{W} & \textbf{22\%} \\
+            \bottomrule
+        \end{tabular}
+    \end{minipage}
+    
+\end{table}
+
+\end{document}
