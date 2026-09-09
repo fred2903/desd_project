@@ -1,6 +1,6 @@
 # Digital Electronic Systems Design - Project Repository 🚀
 
-This repository is organized to facilitate the collaborative development and testing of VHDL modules for our project.
+This repository is organized to facilitate the collaborative development and testing of VHDL modules for the DESD project.
 
 ---
 
